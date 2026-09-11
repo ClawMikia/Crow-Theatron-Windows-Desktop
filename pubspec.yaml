@@ -1,0 +1,59 @@
+name: crow_theatron
+description: "Crow Théatron — local video theater. Windows Desktop / Web port of the Android app."
+publish_to: "none"
+version: 2.0.0
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ── Video playback engine (libmpv-based — supports pitch, speed, vf filters) ──
+  media_kit: ^1.1.11
+  media_kit_video: ^1.2.5
+  media_kit_libs_video: ^1.0.5
+
+  # ── Local SQLite database (mirrors CrowDbHelper schema) ──
+  sqflite_common_ffi: ^2.3.3
+  sqflite_common_ffi_web: ^0.4.5+3
+  path: ^1.9.0
+
+  # ── Prefs (mirrors AppPrefs / SharedPreferences) ──
+  shared_preferences: ^2.3.2
+
+  # ── Folder / file picking (mirrors SAF folder + file picker) ──
+  file_picker: ^8.1.2
+
+  # ── Frameless window + custom title bar (3 buttons, drag area, icon) ──
+  window_manager: ^0.4.3
+
+  # ── Filesystem paths / app data dir ──
+  path_provider: ^2.1.4
+
+  # ── Icons matching the Android vector drawables (Material) ──
+  cupertino_icons: ^1.0.8
+
+  # ── State management (kept intentionally lightweight, like the Android app) ──
+  provider: ^6.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icons/app_icon.png
+    - assets/icons/app_icon_512.png
+    - assets/fonts/Orbitron-Regular.ttf
+    - assets/fonts/Orbitron-Bold.ttf
+
+  fonts:
+    - family: Orbitron
+      fonts:
+        - asset: assets/fonts/Orbitron-Regular.ttf
+        - asset: assets/fonts/Orbitron-Bold.ttf
+          weight: 700

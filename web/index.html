@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="Crow Théatron — local video theater, Web edition.">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Crow Théatron">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>Crow Théatron</title>
+  <link rel="manifest" href="manifest.json">
+
+  <style>
+    html, body { background-color: #0A0A0F; height: 100%; }
+    #loading {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      flex-direction: column; background: #0A0A0F; font-family: sans-serif; color: #F5D547;
+    }
+    #loading img { width: 96px; height: 96px; border-radius: 20px; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <img src="icons/Icon-192.png" alt="Crow Théatron"/>
+    <div>Loading Crow Théatron…</div>
+  </div>
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      var el = document.getElementById('loading');
+      if (el) el.remove();
+    });
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

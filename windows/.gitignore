@@ -1,0 +1,30 @@
+flutter/ephemeral/
+flutter/generated_*
+
+# Visual Studio user-specific files.
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Visual Studio build-related files.
+x64/
+x86/
+Debug/
+Release/
+*.vcxproj
+*.vcxproj.filters
+*.sln
+*.slnx
+
+# Visual Studio cache and intermediate files.
+*.[Cc]ache
+*.tlog
+*.ilk
+*.obj
+*.pdb
+*.lib
+*.exp
+*.res
+*.dll
+*.exe
