@@ -105,7 +105,8 @@ class _KeyboardAccessibleState extends State<KeyboardAccessible> {
 
   @override
   Widget build(BuildContext context) {
-    final focusHighlightColor = widget.focusHighlightColor ?? Theme.of(context).focusColor;
+    final focusHighlightColor =
+        widget.focusHighlightColor ?? Theme.of(context).focusColor;
     final hoverColor = widget.hoverColor ?? Theme.of(context).hoverColor;
 
     Widget result = Focus(
@@ -273,8 +274,12 @@ class _FocusableInkWellState extends State<FocusableInkWell> {
           borderRadius: widget.borderRadius ?? BorderRadius.circular(8),
           child: InkWell(
             onTap: widget.enabled ? _handleTap : null,
-            onLongPress: widget.enabled && widget.onLongPress != null ? widget.onLongPress : null,
-            onDoubleTap: widget.enabled && widget.onDoubleTap != null ? widget.onDoubleTap : null,
+            onLongPress: widget.enabled && widget.onLongPress != null
+                ? widget.onLongPress
+                : null,
+            onDoubleTap: widget.enabled && widget.onDoubleTap != null
+                ? widget.onDoubleTap
+                : null,
             borderRadius: widget.borderRadius,
             splashColor: splashColor,
             highlightColor: highlightColor,
@@ -299,9 +304,7 @@ class _FocusableInkWellState extends State<FocusableInkWell> {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 150),
       decoration: BoxDecoration(
-        border: _isFocused
-            ? Border.all(color: focusColor, width: 2)
-            : null,
+        border: _isFocused ? Border.all(color: focusColor, width: 2) : null,
         borderRadius: widget.borderRadius ?? BorderRadius.circular(8),
         color: _isHovered && !_isFocused ? hoverColor : null,
       ),
@@ -558,6 +561,11 @@ class _FocusableSliderState extends State<FocusableSlider> {
           ? (widget.max - widget.min) / widget.divisions!
           : (widget.max - widget.min) / 100;
 
+      if (widget.onKeyEvent != null) {
+        final result = widget.onKeyEvent!(node, event);
+        if (result == KeyEventResult.handled) return result;
+      }
+
       switch (event.logicalKey) {
         case LogicalKeyboardKey.arrowRight:
         case LogicalKeyboardKey.arrowUp:
@@ -605,9 +613,8 @@ class _FocusableSliderState extends State<FocusableSlider> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         decoration: BoxDecoration(
-          border: _isFocused
-              ? Border.all(color: theme.focusColor, width: 2)
-              : null,
+          border:
+              _isFocused ? Border.all(color: theme.focusColor, width: 2) : null,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Semantics(
@@ -761,43 +768,70 @@ class KeyboardActions extends StatelessWidget {
   Widget build(BuildContext context) {
     return Actions(
       actions: {
-        PlayPauseIntent: CallbackAction<PlayPauseIntent>(onInvoke: (_) => onPlayPause?.call()),
-        FullscreenIntent: CallbackAction<FullscreenIntent>(onInvoke: (_) => onFullscreen?.call()),
+        PlayPauseIntent: CallbackAction<PlayPauseIntent>(
+            onInvoke: (_) => onPlayPause?.call()),
+        FullscreenIntent: CallbackAction<FullscreenIntent>(
+            onInvoke: (_) => onFullscreen?.call()),
         MuteIntent: CallbackAction<MuteIntent>(onInvoke: (_) => onMute?.call()),
-        SeekForwardIntent: CallbackAction<SeekForwardIntent>(onInvoke: (_) => onSeekForward?.call()),
-        SeekBackwardIntent: CallbackAction<SeekBackwardIntent>(onInvoke: (_) => onSeekBackward?.call()),
-        SeekForwardLargeIntent: CallbackAction<SeekForwardLargeIntent>(onInvoke: (_) => onSeekForwardLarge?.call()),
-        SeekBackwardLargeIntent: CallbackAction<SeekBackwardLargeIntent>(onInvoke: (_) => onSeekBackwardLarge?.call()),
-        VolumeUpIntent: CallbackAction<VolumeUpIntent>(onInvoke: (_) => onVolumeUp?.call()),
-        VolumeDownIntent: CallbackAction<VolumeDownIntent>(onInvoke: (_) => onVolumeDown?.call()),
-        NextTrackIntent: CallbackAction<NextTrackIntent>(onInvoke: (_) => onNextTrack?.call()),
-        PreviousTrackIntent: CallbackAction<PreviousTrackIntent>(onInvoke: (_) => onPreviousTrack?.call()),
-        EscapeIntent: CallbackAction<EscapeIntent>(onInvoke: (_) => onEscape?.call()),
-        NavigateHomeIntent: CallbackAction<NavigateHomeIntent>(onInvoke: (_) => onNavigateHome?.call()),
-        NavigateLibraryIntent: CallbackAction<NavigateLibraryIntent>(onInvoke: (_) => onNavigateLibrary?.call()),
-        NavigateFavoritesIntent: CallbackAction<NavigateFavoritesIntent>(onInvoke: (_) => onNavigateFavorites?.call()),
-        OpenSettingsIntent: CallbackAction<OpenSettingsIntent>(onInvoke: (_) => onOpenSettings?.call()),
-        AddChapterIntent: CallbackAction<AddChapterIntent>(onInvoke: (_) => onAddChapter?.call()),
-        AddSkipIntent: CallbackAction<AddSkipIntent>(onInvoke: (_) => onAddSkip?.call()),
+        SeekForwardIntent: CallbackAction<SeekForwardIntent>(
+            onInvoke: (_) => onSeekForward?.call()),
+        SeekBackwardIntent: CallbackAction<SeekBackwardIntent>(
+            onInvoke: (_) => onSeekBackward?.call()),
+        SeekForwardLargeIntent: CallbackAction<SeekForwardLargeIntent>(
+            onInvoke: (_) => onSeekForwardLarge?.call()),
+        SeekBackwardLargeIntent: CallbackAction<SeekBackwardLargeIntent>(
+            onInvoke: (_) => onSeekBackwardLarge?.call()),
+        VolumeUpIntent:
+            CallbackAction<VolumeUpIntent>(onInvoke: (_) => onVolumeUp?.call()),
+        VolumeDownIntent: CallbackAction<VolumeDownIntent>(
+            onInvoke: (_) => onVolumeDown?.call()),
+        NextTrackIntent: CallbackAction<NextTrackIntent>(
+            onInvoke: (_) => onNextTrack?.call()),
+        PreviousTrackIntent: CallbackAction<PreviousTrackIntent>(
+            onInvoke: (_) => onPreviousTrack?.call()),
+        EscapeIntent:
+            CallbackAction<EscapeIntent>(onInvoke: (_) => onEscape?.call()),
+        NavigateHomeIntent: CallbackAction<NavigateHomeIntent>(
+            onInvoke: (_) => onNavigateHome?.call()),
+        NavigateLibraryIntent: CallbackAction<NavigateLibraryIntent>(
+            onInvoke: (_) => onNavigateLibrary?.call()),
+        NavigateFavoritesIntent: CallbackAction<NavigateFavoritesIntent>(
+            onInvoke: (_) => onNavigateFavorites?.call()),
+        OpenSettingsIntent: CallbackAction<OpenSettingsIntent>(
+            onInvoke: (_) => onOpenSettings?.call()),
+        AddChapterIntent: CallbackAction<AddChapterIntent>(
+            onInvoke: (_) => onAddChapter?.call()),
+        AddSkipIntent:
+            CallbackAction<AddSkipIntent>(onInvoke: (_) => onAddSkip?.call()),
       },
       child: Shortcuts(
         shortcuts: {
           SingleActivator(LogicalKeyboardKey.space): const PlayPauseIntent(),
           SingleActivator(LogicalKeyboardKey.keyF): const FullscreenIntent(),
           SingleActivator(LogicalKeyboardKey.keyM): const MuteIntent(),
-          SingleActivator(LogicalKeyboardKey.arrowRight): const SeekForwardIntent(),
-          SingleActivator(LogicalKeyboardKey.arrowLeft): const SeekBackwardIntent(),
-          SingleActivator(LogicalKeyboardKey.arrowRight, control: true): const SeekForwardLargeIntent(),
-          SingleActivator(LogicalKeyboardKey.arrowLeft, control: true): const SeekBackwardLargeIntent(),
+          SingleActivator(LogicalKeyboardKey.arrowRight):
+              const SeekForwardIntent(),
+          SingleActivator(LogicalKeyboardKey.arrowLeft):
+              const SeekBackwardIntent(),
+          SingleActivator(LogicalKeyboardKey.arrowRight, control: true):
+              const SeekForwardLargeIntent(),
+          SingleActivator(LogicalKeyboardKey.arrowLeft, control: true):
+              const SeekBackwardLargeIntent(),
           SingleActivator(LogicalKeyboardKey.arrowUp): const VolumeUpIntent(),
-          SingleActivator(LogicalKeyboardKey.arrowDown): const VolumeDownIntent(),
-          SingleActivator(LogicalKeyboardKey.arrowRight, control: true): const NextTrackIntent(),
-          SingleActivator(LogicalKeyboardKey.arrowLeft, control: true): const PreviousTrackIntent(),
+          SingleActivator(LogicalKeyboardKey.arrowDown):
+              const VolumeDownIntent(),
+          SingleActivator(LogicalKeyboardKey.arrowRight, control: true):
+              const NextTrackIntent(),
+          SingleActivator(LogicalKeyboardKey.arrowLeft, control: true):
+              const PreviousTrackIntent(),
           SingleActivator(LogicalKeyboardKey.escape): const EscapeIntent(),
           SingleActivator(LogicalKeyboardKey.keyH): const NavigateHomeIntent(),
-          SingleActivator(LogicalKeyboardKey.keyL): const NavigateLibraryIntent(),
-          SingleActivator(LogicalKeyboardKey.keyF): const NavigateFavoritesIntent(),
-          SingleActivator(LogicalKeyboardKey.keyS, control: true): const OpenSettingsIntent(),
+          SingleActivator(LogicalKeyboardKey.keyL):
+              const NavigateLibraryIntent(),
+          SingleActivator(LogicalKeyboardKey.keyF):
+              const NavigateFavoritesIntent(),
+          SingleActivator(LogicalKeyboardKey.keyS, control: true):
+              const OpenSettingsIntent(),
           SingleActivator(LogicalKeyboardKey.keyC): const AddChapterIntent(),
           SingleActivator(LogicalKeyboardKey.keyK): const AddSkipIntent(),
         },
