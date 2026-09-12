@@ -39,7 +39,15 @@ class PlaybackService extends ChangeNotifier {
   late final Player _player;
   Player get player => _player;
 
-  VideoEntity? currentVideo;
+  VideoEntity? _currentVideo;
+  VideoEntity? get currentVideo => _currentVideo;
+
+  set currentVideo(VideoEntity? v) {
+    if (_currentVideo == v) return;
+    _currentVideo = v;
+    notifyListeners();
+  }
+
   List<VideoEntity> queue = [];
   int queueIndex = -1;
 

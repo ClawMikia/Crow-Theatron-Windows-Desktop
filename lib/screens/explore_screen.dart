@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../data/video_repository.dart';
 import '../models/video_entity.dart';
 import '../theme/crow_colors.dart';
 import '../widgets/section_header.dart';
@@ -19,6 +20,27 @@ class _ExploreScreenState extends State<ExploreScreen> {
   final _controller = TextEditingController();
   List<VideoEntity> _results = [];
   bool _grid = true;
+  late VideoRepository _repo;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _repo = repoOf(context);
+      _repo.addListener(_onRepoChanged);
+    });
+  }
+
+  @override
+  void dispose() {
+    _repo.removeListener(_onRepoChanged);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onRepoChanged() {
+    if (mounted) _search(_controller.text);
+  }
 
   Future<void> _search(String raw) async {
     final q = raw.trim();
@@ -26,14 +48,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
       setState(() => _results = []);
       return;
     }
-    final results = await repoOf(context).search(q);
+    final results = await _repo.search(q);
     if (mounted) setState(() => _results = results);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
   }
 
   @override

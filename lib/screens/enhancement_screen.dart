@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../data/app_prefs.dart';
 import '../models/enhancement_mode.dart';
 import '../theme/crow_colors.dart';
@@ -17,73 +18,63 @@ class EnhancementScreen extends StatefulWidget {
 }
 
 class _EnhancementScreenState extends State<EnhancementScreen> {
-  AppPrefs? _prefs;
-
-  @override
-  void initState() {
-    super.initState();
-    AppPrefs.getInstance().then((p) => setState(() => _prefs = p));
-  }
-
   @override
   Widget build(BuildContext context) {
-    final prefs = _prefs;
+    final prefs = context.watch<AppPrefs>();
     return Column(
       children: [
         const SectionHeader(title: 'Video Enhancement', subtitle: 'Default look applied to newly-imported videos'),
         Expanded(
-          child: prefs == null
-              ? const Center(child: CircularProgressIndicator(color: CrowColors.accentYellow))
-              : GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 320,
-                    childAspectRatio: 2.6,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                  ),
-                  itemCount: EnhancementMode.values.length,
-                  itemBuilder: (context, i) {
-                    final mode = EnhancementMode.values[i];
-                    final selected = prefs.defaultEnhancement == mode;
-                    return Card(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: selected ? CrowColors.accentPurple : CrowColors.divider, width: selected ? 1.6 : 1),
-                      ),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () {
-                          setState(() => prefs.defaultEnhancement = mode);
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Default set to ${mode.displayName}')));
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Row(
+          child: GridView.builder(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 320,
+              childAspectRatio: 2.6,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+            ),
+            itemCount: EnhancementMode.values.length,
+            itemBuilder: (context, i) {
+              final mode = EnhancementMode.values[i];
+              final selected = prefs.defaultEnhancement == mode;
+              return Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: selected ? CrowColors.accentPurple : CrowColors.divider, width: selected ? 1.6 : 1),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(12),
+                  onTap: () {
+                    prefs.defaultEnhancement = mode;
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Default set to ${mode.displayName}')));
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        Icon(
+                          selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
+                          color: selected ? CrowColors.accentPurple : CrowColors.onMuted,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(
-                                selected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
-                                color: selected ? CrowColors.accentPurple : CrowColors.onMuted,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(mode.displayName, style: const TextStyle(color: CrowColors.onBg, fontWeight: FontWeight.w600)),
-                                    const SizedBox(height: 3),
-                                    Text(mode.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: CrowColors.onMuted, fontSize: 11.5)),
-                                  ],
-                                ),
-                              ),
+                              Text(mode.displayName, style: const TextStyle(color: CrowColors.onBg, fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 3),
+                              Text(mode.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: CrowColors.onMuted, fontSize: 11.5)),
                             ],
                           ),
                         ),
-                      ),
-                    );
-                  },
+                      ],
+                    ),
+                  ),
                 ),
+              );
+            },
+          ),
         ),
       ],
     );

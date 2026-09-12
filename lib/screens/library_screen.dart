@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../data/video_repository.dart';
 import '../models/video_entity.dart';
 import '../theme/crow_colors.dart';
 import '../widgets/crow_scaffold.dart';
@@ -40,32 +41,46 @@ class _LibraryScreenState extends State<LibraryScreen> {
   bool _grid = true;
   String? _selectedFolder; // null = "All folders"
   bool _loading = true;
+  late VideoRepository _repo;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _repo = repoOf(context);
+      _load();
+      _repo.addListener(_onRepoChanged);
+    });
+  }
+
+  @override
+  void dispose() {
+    _repo.removeListener(_onRepoChanged);
+    super.dispose();
+  }
+
+  void _onRepoChanged() {
+    if (mounted) _load();
   }
 
   Future<void> _load() async {
-    final repo = repoOf(context);
     List<VideoEntity> videos;
     switch (widget.mode) {
       case LibraryMode.favorites:
-        videos = await repo.listFavorites();
+        videos = await _repo.listFavorites();
         break;
       case LibraryMode.continueWatching:
-        videos = await repo.listContinueWatching();
+        videos = await _repo.listContinueWatching();
         break;
       case LibraryMode.recentlyPlayed:
-        videos = await repo.listRecentlyPlayed();
+        videos = await _repo.listRecentlyPlayed();
         break;
       case LibraryMode.playlist:
-        videos = await repo.getVideosInPlaylist(widget.playlistId!);
+        videos = await _repo.getVideosInPlaylist(widget.playlistId!);
         break;
       case LibraryMode.all:
-        videos = await repo.listAllByFolder();
-        break;
+        videos = await _repo.listAllByFolder();
+      break;
     }
     if (mounted) setState(() { _videos = videos; _loading = false; });
   }

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../data/video_repository.dart';
 import '../models/playlist.dart';
 import '../theme/crow_colors.dart';
 import '../widgets/section_header.dart';
 import 'library_screen.dart';
-import 'main_screen.dart';
 
 /// Port of `playlist/PlaylistListActivity.kt` — create, rename, delete,
 /// and open user playlists. Embedded directly in [AppShell]'s content
@@ -18,15 +19,30 @@ class PlaylistListScreen extends StatefulWidget {
 
 class _PlaylistListScreenState extends State<PlaylistListScreen> {
   List<Playlist> _playlists = [];
+  late VideoRepository _repo;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _repo = context.read<VideoRepository>();
+      _load();
+      _repo.addListener(_onRepoChanged);
+    });
+  }
+
+  @override
+  void dispose() {
+    _repo.removeListener(_onRepoChanged);
+    super.dispose();
+  }
+
+  void _onRepoChanged() {
+    if (mounted) _load();
   }
 
   Future<void> _load() async {
-    final list = await repoOf(context).listPlaylists();
+    final list = await _repo.listPlaylists();
     if (mounted) setState(() => _playlists = list);
   }
 
@@ -50,8 +66,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       ),
     );
     if (name != null && name.isNotEmpty) {
-      await repoOf(context).createPlaylist(name);
-      _load();
+      await _repo.createPlaylist(name);
     }
   }
 
@@ -70,8 +85,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       ),
     );
     if (name != null && name.isNotEmpty) {
-      await repoOf(context).renamePlaylist(p.id, name);
-      _load();
+      await _repo.renamePlaylist(p.id, name);
     }
   }
 
@@ -89,8 +103,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       ),
     );
     if (confirmed == true) {
-      await repoOf(context).deletePlaylist(p.id);
-      _load();
+      await _repo.deletePlaylist(p.id);
     }
   }
 

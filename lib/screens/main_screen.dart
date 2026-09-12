@@ -26,17 +26,31 @@ class _MainScreenState extends State<MainScreen> {
   List<VideoEntity> _continueWatching = [];
   List<VideoEntity> _favorites = [];
   bool _loaded = false;
+  late VideoRepository _repo;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _repo = repoOf(context);
+      _load();
+      _repo.addListener(_onRepoChanged);
+    });
+  }
+
+  @override
+  void dispose() {
+    _repo.removeListener(_onRepoChanged);
+    super.dispose();
+  }
+
+  void _onRepoChanged() {
+    if (mounted) _load();
   }
 
   Future<void> _load() async {
-    final repo = repoOf(context);
-    final cw = await repo.listContinueWatching();
-    final favs = await repo.listFavorites();
+    final cw = await _repo.listContinueWatching();
+    final favs = await _repo.listFavorites();
     if (mounted) setState(() { _continueWatching = cw; _favorites = favs; _loaded = true; });
   }
 

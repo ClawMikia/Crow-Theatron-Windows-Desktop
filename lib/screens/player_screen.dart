@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
 
+import '../data/video_repository.dart';
 import '../models/chapter_marker.dart';
 import '../models/enhancement_mode.dart';
 import '../models/timeline_skip.dart';
@@ -225,6 +226,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _fullscreen = false;
   late VideoController _controller;
   PlaybackService? _svc;
+  VideoRepository? _repo;
   final FocusNode _playerFocusNode =
       FocusNode(debugLabel: 'player keyboard focus');
 
@@ -237,9 +239,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _init() async {
     final svc = context.read<PlaybackService>();
     _svc = svc;
+    _repo = repoOf(context);
+    _repo!.addListener(_onRepoChanged);
+    svc.addListener(_onPlaybackServiceChanged);
     svc.setPlayerScreenVisible(true);
-    final repo = repoOf(context);
-    final video = await repo.getById(widget.videoId);
+    final video = await _repo!.getById(widget.videoId);
     if (video == null || !mounted) return;
     setState(() => _video = video);
     _playerFocusNode.requestFocus();
@@ -250,19 +254,43 @@ class _PlayerScreenState extends State<PlayerScreen> {
     await _reloadChaptersAndSkips();
   }
 
+  void _onRepoChanged() {
+    if (!mounted) return;
+    _reloadChaptersAndSkips();
+    _refreshVideo();
+  }
+
+  void _onPlaybackServiceChanged() {
+    if (!mounted || _video == null) return;
+    final current = _svc?.currentVideo;
+    if (current != null && current.id != _video!.id) {
+      setState(() => _video = current);
+      _reloadChaptersAndSkips();
+    }
+  }
+
+  Future<void> _refreshVideo() async {
+    final updated = await _repo!.getById(widget.videoId);
+    if (updated != null && mounted && updated != _video) {
+      setState(() => _video = updated);
+    }
+  }
+
   Future<void> _reloadChaptersAndSkips() async {
-    final repo = repoOf(context);
-    final chapters = await repo.listChapters(widget.videoId);
-    final skips = await repo.listSkips(widget.videoId);
-    if (mounted)
+    final chapters = await _repo!.listChapters(widget.videoId);
+    final skips = await _repo!.listSkips(widget.videoId);
+    if (mounted) {
       setState(() {
         _chapters = chapters;
         _skips = skips;
       });
+    }
   }
 
   @override
   void dispose() {
+    _repo?.removeListener(_onRepoChanged);
+    _svc?.removeListener(_onPlaybackServiceChanged);
     _playerFocusNode.dispose();
     _svc?.setPlayerScreenVisible(false);
     super.dispose();
@@ -270,7 +298,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _saveVideo(VideoEntity updated) async {
     setState(() => _video = updated);
-    await repoOf(context).savePreferences(updated);
+    await _repo!.savePreferences(updated);
     if (_svc?.currentVideo?.id == updated.id) {
       _svc!.currentVideo = updated;
       await _svc!.applyVideoFilters(updated);

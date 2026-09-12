@@ -4,6 +4,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'data/app_prefs.dart';
 import 'data/video_repository.dart';
 import 'screens/splash_screen.dart';
 import 'services/playback_service.dart';
@@ -46,7 +47,8 @@ class CrowTheatronApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        Provider<VideoRepository>.value(value: repo),
+        ChangeNotifierProvider<AppPrefs>.value(value: repo.prefs),
+        ChangeNotifierProvider<VideoRepository>.value(value: repo),
         ChangeNotifierProvider<PlaybackService>(create: (_) => PlaybackService(repo)),
         ChangeNotifierProvider<ShellNavState>(create: (_) => ShellNavState()),
       ],
