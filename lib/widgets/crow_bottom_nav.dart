@@ -4,6 +4,7 @@ import '../screens/explore_screen.dart';
 import '../screens/library_screen.dart';
 import '../screens/main_screen.dart';
 import '../screens/playback_memory_screen.dart';
+import 'keyboard_accessible.dart';
 
 enum CrowNavTab { home, library, favorites, memory, explore }
 
@@ -104,8 +105,9 @@ class _NavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = selected ? CrowColors.accentYellow : CrowColors.onBg;
     return Expanded(
-      child: InkWell(
+      child: FocusableInkWell(
         onTap: onTap,
+        semanticsLabel: label,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [

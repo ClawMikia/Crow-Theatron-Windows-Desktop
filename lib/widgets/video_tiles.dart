@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/video_entity.dart';
 import '../theme/crow_colors.dart';
 import '../util/format_utils.dart';
+import 'keyboard_accessible.dart';
 
 /// Responsive grid delegate used by every wide desktop video grid —
 /// column count grows with window width instead of the phone app's
@@ -96,15 +97,17 @@ class VideoGridCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.all(6),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: CrowColors.accentCyan, width: 1),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
+    return FocusableInkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      semanticsLabel: video.title,
+      child: Card(
+        margin: const EdgeInsets.all(6),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: CrowColors.accentCyan, width: 1),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -118,7 +121,13 @@ class VideoGridCard extends StatelessWidget {
                     Positioned(
                       top: 6,
                       right: 6,
-                      child: _RemoveButton(onTap: onRemove!),
+                      child: FocusableIconButton(
+                        icon: const Icon(Icons.close_rounded, size: 16, color: CrowColors.accentRed),
+                        onPressed: onRemove!,
+                        tooltip: 'Remove',
+                        semanticsLabel: 'Remove ${video.title}',
+                        padding: const EdgeInsets.all(8),
+                      ),
                     ),
                 ],
               ),
@@ -164,15 +173,17 @@ class VideoListRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: const BorderSide(color: CrowColors.accentCyan, width: 1),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
+    return FocusableInkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      semanticsLabel: video.title,
+      child: Card(
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: CrowColors.accentCyan, width: 1),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: Row(
           children: [
             SizedBox(width: 80, height: 64, child: _ThumbArt(seed: video.uriString, iconSize: 28)),
@@ -198,32 +209,19 @@ class VideoListRow extends StatelessWidget {
                 ),
               ),
             ),
-            if (onRemove != null) Padding(padding: const EdgeInsets.only(right: 8), child: _RemoveButton(onTap: onRemove!)),
+            if (onRemove != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: FocusableIconButton(
+                  icon: const Icon(Icons.close_rounded, size: 16, color: CrowColors.accentRed),
+                  onPressed: onRemove!,
+                  tooltip: 'Remove',
+                  semanticsLabel: 'Remove ${video.title}',
+                  padding: const EdgeInsets.all(8),
+                ),
+              ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _RemoveButton extends StatelessWidget {
-  const _RemoveButton({required this.onTap});
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: onTap,
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: CrowColors.accentRed, width: 1.2),
-          color: CrowColors.pureBlack.withValues(alpha: 0.4),
-        ),
-        child: const Icon(Icons.close_rounded, size: 16, color: CrowColors.accentRed),
       ),
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../data/app_prefs.dart';
 import '../theme/crow_colors.dart';
 import '../widgets/section_header.dart';
+import '../widgets/keyboard_accessible.dart';
 
 /// Port of `activity_settings.xml` + `settings/SettingsActivity.kt`.
 /// "Display & Playback" defaults — applied to newly scanned videos and
@@ -114,21 +115,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         Row(
                           children: [
                             Expanded(
-                              child: Slider(
+                              child: FocusableSlider(
                                 value: prefs.defaultSeekJumpSec.clamp(1, 59).toDouble(),
                                 min: 1,
                                 max: 59,
                                 divisions: 58,
                                 onChanged: (v) => setState(() => prefs.defaultSeekJumpSec = v.round()),
+                                semanticsLabel: 'Seek interval',
+                                semanticsValue: '${prefs.defaultSeekJumpSec} sec',
                               ),
                             ),
-                            GestureDetector(
+                            FocusableInkWell(
                               onTap: () => _editNumber(
                                 title: 'Skip interval (sec)',
                                 current: prefs.defaultSeekJumpSec.toDouble(),
                                 decimal: false,
                                 onSave: (v) => prefs.defaultSeekJumpSec = v.toInt(),
                               ),
+                              borderRadius: BorderRadius.circular(8),
+                              semanticsLabel: 'Edit seek interval',
                               child: Text('${prefs.defaultSeekJumpSec}',
                                   style: const TextStyle(color: CrowColors.accentCyan, fontWeight: FontWeight.bold)),
                             ),
@@ -214,8 +219,10 @@ class _SettingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return FocusableInkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      semanticsLabel: label,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Row(

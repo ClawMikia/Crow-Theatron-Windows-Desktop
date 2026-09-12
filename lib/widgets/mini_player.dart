@@ -6,6 +6,7 @@ import '../screens/player_screen.dart';
 import '../services/playback_service.dart';
 import '../theme/crow_colors.dart';
 import '../util/format_utils.dart';
+import 'keyboard_accessible.dart';
 
 /// Full-width bottom-docked playback bar — sits under the sidebar +
 /// content area (like a desktop media player's transport bar), so
@@ -52,8 +53,10 @@ class _MiniPlayerState extends State<MiniPlayer> {
           // ── Track info (click to reopen full player) ──
           Expanded(
             flex: 3,
-            child: InkWell(
+            child: FocusableInkWell(
               onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PlayerScreen(videoId: video.id))),
+              semanticsLabel: 'Now playing: ${video.title}',
+              borderRadius: BorderRadius.circular(8),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 child: Row(
@@ -100,16 +103,18 @@ class _MiniPlayerState extends State<MiniPlayer> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _Btn(icon: Icons.skip_previous_rounded, onTap: svc.playPrevious),
-                    _Btn(icon: Icons.replay_10_rounded, onTap: () => svc.seekRelative(-10000)),
-                    _Btn(
-                      icon: playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded,
+                    FocusableIconButton(icon: const Icon(Icons.skip_previous_rounded), onPressed: svc.playPrevious, tooltip: 'Previous', semanticsLabel: 'Previous track'),
+                    FocusableIconButton(icon: const Icon(Icons.replay_10_rounded), onPressed: () => svc.seekRelative(-10000), tooltip: 'Rewind 10s', semanticsLabel: 'Rewind 10 seconds'),
+                    FocusableIconButton(
+                      icon: Icon(playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded),
+                      onPressed: svc.togglePlayPause,
                       size: 30,
                       color: CrowColors.accentRed,
-                      onTap: svc.togglePlayPause,
+                      tooltip: playing ? 'Pause' : 'Play',
+                      semanticsLabel: playing ? 'Pause' : 'Play',
                     ),
-                    _Btn(icon: Icons.forward_10_rounded, onTap: () => svc.seekRelative(10000)),
-                    _Btn(icon: Icons.skip_next_rounded, onTap: svc.playNext),
+                    FocusableIconButton(icon: const Icon(Icons.forward_10_rounded), onPressed: () => svc.seekRelative(10000), tooltip: 'Forward 10s', semanticsLabel: 'Forward 10 seconds'),
+                    FocusableIconButton(icon: const Icon(Icons.skip_next_rounded), onPressed: svc.playNext, tooltip: 'Next', semanticsLabel: 'Next track'),
                   ],
                 ),
                 Row(
@@ -117,18 +122,13 @@ class _MiniPlayerState extends State<MiniPlayer> {
                     const SizedBox(width: 12),
                     Text(FormatUtils.formatDuration(pos), style: const TextStyle(color: CrowColors.onMuted, fontSize: 10)),
                     Expanded(
-                      child: SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          trackHeight: 2.5,
-                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-                          overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
-                        ),
-                        child: Slider(
-                          value: pos.clamp(0, dur > 0 ? dur : 1).toDouble(),
-                          min: 0,
-                          max: (dur > 0 ? dur : 1).toDouble(),
-                          onChanged: (v) => svc.seekTo(v.toInt()),
-                        ),
+                      child: FocusableSlider(
+                        value: pos.clamp(0, dur > 0 ? dur : 1).toDouble(),
+                        min: 0,
+                        max: (dur > 0 ? dur : 1).toDouble(),
+                        onChanged: (v) => svc.seekTo(v.toInt()),
+                        semanticsLabel: 'Playback position',
+                        semanticsValue: FormatUtils.formatDuration(pos),
                       ),
                     ),
                     Text(FormatUtils.formatDuration(dur), style: const TextStyle(color: CrowColors.onMuted, fontSize: 10)),
@@ -144,17 +144,24 @@ class _MiniPlayerState extends State<MiniPlayer> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                const Icon(Icons.volume_up_rounded, size: 18, color: CrowColors.onMuted),
+                FocusableIconButton(
+                  icon: const Icon(Icons.volume_up_rounded, size: 18, color: CrowColors.onMuted),
+                  onPressed: () => svc.toggleMute(),
+                  tooltip: 'Mute/Unmute',
+                  semanticsLabel: 'Mute/Unmute',
+                ),
                 SizedBox(
                   width: 90,
-                  child: Slider(
+                  child: FocusableSlider(
                     value: (video.volumeLevel * 100).clamp(0, 100),
                     min: 0,
                     max: 100,
                     onChanged: (v) => svc.player.setVolume(v),
+                    semanticsLabel: 'Volume',
+                    semanticsValue: '${(video.volumeLevel * 100).round()}%',
                   ),
                 ),
-                _Btn(icon: Icons.close_rounded, onTap: svc.close),
+                FocusableIconButton(icon: const Icon(Icons.close_rounded), onPressed: svc.close, tooltip: 'Close player', semanticsLabel: 'Close mini player'),
                 const SizedBox(width: 10),
               ],
             ),
@@ -162,18 +169,5 @@ class _MiniPlayerState extends State<MiniPlayer> {
         ],
       ),
     );
-  }
-}
-
-class _Btn extends StatelessWidget {
-  const _Btn({required this.icon, required this.onTap, this.size = 20, this.color = CrowColors.onBg});
-  final IconData icon;
-  final VoidCallback onTap;
-  final double size;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(icon: Icon(icon, color: color, size: size), onPressed: onTap, splashRadius: 20);
   }
 }

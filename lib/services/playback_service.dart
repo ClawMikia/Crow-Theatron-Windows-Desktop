@@ -46,6 +46,12 @@ class PlaybackService extends ChangeNotifier {
   /// True while the full PlayerScreen is on top — hides the mini-player.
   bool isPlayerScreenVisible = false;
 
+  /// Volume before muting, used for mute toggle.
+  double _volumeBeforeMute = 1.0;
+
+  /// Whether currently muted - more reliable than checking volume.
+  bool _isMuted = false;
+
   Timer? _ticker;
   Timer? _saveTimer;
 
@@ -146,6 +152,19 @@ class PlaybackService extends ChangeNotifier {
     } else {
       if (_player.state.completed) await _player.seek(Duration(milliseconds: trimStartMs));
       await _player.play();
+    }
+  }
+
+  Future<void> toggleMute() async {
+    if (!_isMuted) {
+      // Mute: save current volume and set to 0
+      _volumeBeforeMute = _player.state.volume;
+      await _player.setVolume(0);
+      _isMuted = true;
+    } else {
+      // Unmute: restore saved volume (0-100 scale)
+      await _player.setVolume(_volumeBeforeMute.clamp(0, 100));
+      _isMuted = false;
     }
   }
 

@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
 
@@ -13,6 +14,195 @@ import '../util/format_utils.dart';
 import '../widgets/crow_title_bar.dart';
 import '../widgets/player_dialogs.dart';
 import 'main_screen.dart';
+import '../widgets/keyboard_accessible.dart';
+
+/// Standard video player keyboard shortcuts (matching YouTube, VLC, MPV, etc.)
+class _VideoPlayerShortcuts {
+  static const Duration _seekShort = Duration(seconds: 5);
+  static const Duration _seekMedium = Duration(seconds: 10);
+  static const Duration _seekLong = Duration(seconds: 30);
+  static const Duration _seekFrame = Duration(milliseconds: 100); // ~1 frame at 30fps
+  static const double _volumeStep = 5.0;
+  static const double _speedStep = 0.25;
+
+  static void handleKeyEvent(
+    KeyEvent event,
+    PlaybackService svc,
+    VideoEntity video, {
+    required VoidCallback onFullscreen,
+    required VoidCallback onAddChapter,
+    required VoidCallback onAddSkip,
+    required VoidCallback onNextChapter,
+    required VoidCallback onPreviousChapter,
+  }) {
+    if (event is! KeyDownEvent) return;
+
+    final logicalKey = event.logicalKey;
+    final isShift = HardwareKeyboard.instance.isShiftPressed;
+    final isControl = HardwareKeyboard.instance.isControlPressed;
+    final isAlt = HardwareKeyboard.instance.isAltPressed;
+
+    // Handle number keys 0-9 for seeking to percentage
+    if (_isDigitKey(logicalKey)) {
+      final digit = _digitKeyToInt(logicalKey);
+      if (digit != null) {
+        final percent = digit * 10;
+        final duration = svc.player.state.duration.inMilliseconds;
+        if (duration > 0) {
+          svc.seekTo((duration * percent / 100).round());
+        }
+      }
+      return;
+    }
+
+    switch (logicalKey) {
+      // Play/Pause - Space or K
+      case LogicalKeyboardKey.space:
+      case LogicalKeyboardKey.keyK:
+        svc.togglePlayPause();
+        break;
+
+      // Fullscreen - F
+      case LogicalKeyboardKey.keyF:
+        onFullscreen();
+        break;
+
+      // Mute - M
+      case LogicalKeyboardKey.keyM:
+        svc.toggleMute();
+        break;
+
+      // Seek backward/forward - Arrow keys
+      case LogicalKeyboardKey.arrowLeft:
+        if (isControl) {
+          svc.seekRelative(-_seekLong.inMilliseconds); // Ctrl+←: -30s
+        } else if (isShift) {
+          svc.seekRelative(-_seekFrame.inMilliseconds); // Shift+←: -1 frame
+        } else if (isAlt) {
+          svc.seekRelative(-_seekShort.inMilliseconds); // Alt+←: -5s
+        } else {
+          svc.seekRelative(-_seekMedium.inMilliseconds); // ←: -10s
+        }
+        break;
+
+      case LogicalKeyboardKey.arrowRight:
+        if (isControl) {
+          svc.seekRelative(_seekLong.inMilliseconds); // Ctrl+→: +30s
+        } else if (isShift) {
+          svc.seekRelative(_seekFrame.inMilliseconds); // Shift+→: +1 frame
+        } else if (isAlt) {
+          svc.seekRelative(_seekShort.inMilliseconds); // Alt+→: +5s
+        } else {
+          svc.seekRelative(_seekMedium.inMilliseconds); // →: +10s
+        }
+        break;
+
+      // J/L for 10s seek (YouTube style)
+      case LogicalKeyboardKey.keyJ:
+        svc.seekRelative(-_seekMedium.inMilliseconds);
+        break;
+
+      case LogicalKeyboardKey.keyL:
+        svc.seekRelative(_seekMedium.inMilliseconds);
+        break;
+
+      // Volume - Arrow Up/Down
+      case LogicalKeyboardKey.arrowUp:
+        svc.player.setVolume((svc.player.state.volume + _volumeStep).clamp(0, 100));
+        break;
+
+      case LogicalKeyboardKey.arrowDown:
+        svc.player.setVolume((svc.player.state.volume - _volumeStep).clamp(0, 100));
+        break;
+
+      // Home/End - Beginning/End
+      case LogicalKeyboardKey.home:
+        svc.seekTo(0);
+        break;
+
+      case LogicalKeyboardKey.end:
+        final dur = svc.player.state.duration.inMilliseconds;
+        if (dur > 0) svc.seekTo(dur);
+        break;
+
+      // Speed control - >/< or ./,
+      case LogicalKeyboardKey.period:
+      case LogicalKeyboardKey.keyE: // E for faster
+        if (isShift) {
+          _adjustSpeed(svc, video, _speedStep);
+        }
+        break;
+
+      case LogicalKeyboardKey.comma:
+      case LogicalKeyboardKey.keyW: // W for slower
+        if (isShift) {
+          _adjustSpeed(svc, video, -_speedStep);
+        }
+        break;
+
+      // Reset speed - Ctrl+R
+      case LogicalKeyboardKey.keyR:
+        if (isControl) {
+          svc.player.setRate(1.0);
+        }
+        break;
+
+      // Next/Previous track - Shift+N / Shift+P
+      case LogicalKeyboardKey.keyN:
+        if (isShift) {
+          svc.playNext();
+        }
+        break;
+
+      case LogicalKeyboardKey.keyP:
+        if (isShift) {
+          svc.playPrevious();
+        }
+        break;
+
+      // Chapters - N/P for next/previous chapter
+      case LogicalKeyboardKey.keyN:
+        if (!isShift) onNextChapter();
+        break;
+
+      case LogicalKeyboardKey.keyP:
+        if (!isShift) onPreviousChapter();
+        break;
+
+      // Add chapter - C
+      case LogicalKeyboardKey.keyC:
+        onAddChapter();
+        break;
+
+      // Add skip - Ctrl+K
+      case LogicalKeyboardKey.keyK:
+        if (isControl) onAddSkip();
+        break;
+
+      // Escape - exit fullscreen or close
+      case LogicalKeyboardKey.escape:
+        // Handled by AppShell
+        break;
+
+      default:
+        return; // Not handled
+    }
+  }
+
+  static bool _isDigitKey(LogicalKeyboardKey key) {
+    return key.keyId >= LogicalKeyboardKey.digit0.keyId && key.keyId <= LogicalKeyboardKey.digit9.keyId;
+  }
+
+  static int? _digitKeyToInt(LogicalKeyboardKey key) {
+    if (!_isDigitKey(key)) return null;
+    return key.keyId - LogicalKeyboardKey.digit0.keyId;
+  }
+
+  static void _adjustSpeed(PlaybackService svc, VideoEntity video, double delta) {
+    final newSpeed = (video.playbackSpeed + delta).clamp(0.25, 4.0);
+    svc.player.setRate(newSpeed);
+  }
+}
 
 /// Port of `player/PlayerActivity.kt` + `activity_player.xml` — the full
 /// per-video control surface: transport, volume/pitch/speed, trim,
@@ -154,25 +344,52 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // ── Video surface + overlay ──────────────────────────────────────────
 
   Widget _buildVideoSurface(VideoEntity video) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        ColoredBox(
-          color: CrowColors.pureBlack,
-          child: Video(controller: _controller, fit: video.cropMode.boxFit, controls: NoVideoControls),
-        ),
-        Positioned(
-          top: 8,
-          left: 8,
-          right: 8,
-          child: Row(
-            children: [
-              _OverlayIconBtn(icon: Icons.arrow_back_rounded, onTap: () => Navigator.of(context).maybePop()),
+    final svc = context.watch<PlaybackService>();
+    final focusNode = FocusNode();
+
+    return Focus(
+      focusNode: focusNode,
+      autofocus: true,
+      onKeyEvent: (node, event) {
+        _VideoPlayerShortcuts.handleKeyEvent(
+          event,
+          svc,
+          video,
+          onFullscreen: () => setState(() => _fullscreen = !_fullscreen),
+          onAddChapter: _addChapterAtCurrentPosition,
+          onAddSkip: () async {
+            final pos = svc.player.state.position.inMilliseconds;
+            final result = await showAddSkipDialog(context, initialStartMs: pos, initialEndMs: pos + 10000);
+            if (result == null) return;
+            await repoOf(context).addSkip(widget.videoId, result.$1, result.$2, label: result.$3);
+            _reloadChaptersAndSkips();
+          },
+          onNextChapter: _seekToNextChapter,
+          onPreviousChapter: _seekToPreviousChapter,
+        );
+        return KeyEventResult.ignored; // Allow other handlers to process
+      },
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ColoredBox(
+            color: CrowColors.pureBlack,
+            child: Video(controller: _controller, fit: video.cropMode.boxFit, controls: NoVideoControls),
+          ),
+          Positioned(
+            top: 8,
+            left: 8,
+            right: 8,
+            child: Row(
+              children: [
+                FocusableIconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => Navigator.of(context).maybePop(), tooltip: 'Back', semanticsLabel: 'Back to library'),
               const Spacer(),
-              _OverlayIconBtn(icon: Icons.bookmark_add_outlined, onTap: () => _addChapterAtCurrentPosition()),
-              _OverlayIconBtn(
-                icon: _fullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded,
-                onTap: () => setState(() => _fullscreen = !_fullscreen),
+              FocusableIconButton(icon: const Icon(Icons.bookmark_add_outlined), onPressed: () => _addChapterAtCurrentPosition(), tooltip: 'Add chapter', semanticsLabel: 'Add chapter at current position'),
+              FocusableIconButton(
+                icon: Icon(_fullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded),
+                onPressed: () => setState(() => _fullscreen = !_fullscreen),
+                tooltip: _fullscreen ? 'Exit fullscreen' : 'Enter fullscreen',
+                semanticsLabel: _fullscreen ? 'Exit fullscreen' : 'Enter fullscreen',
               ),
             ],
           ),
@@ -184,6 +401,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           child: _buildSeekOverlay(video),
         ),
       ],
+      ),
     );
   }
 
@@ -199,14 +417,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
         children: [
           Text(FormatUtils.formatDuration(pos), style: const TextStyle(color: Colors.white, fontSize: 11)),
           Expanded(
-            child: SliderTheme(
-              data: SliderTheme.of(context).copyWith(trackHeight: 3),
-              child: Slider(
-                value: pos.clamp(0, max(dur, 1)).toDouble(),
-                min: 0,
-                max: max(dur, 1).toDouble(),
-                onChanged: (v) => svc.seekTo(v.toInt()),
-              ),
+            child: FocusableSlider(
+              value: pos.clamp(0, max(dur, 1)).toDouble(),
+              min: 0,
+              max: max(dur, 1).toDouble(),
+              onChanged: (v) => svc.seekTo(v.toInt()),
+              semanticsLabel: 'Playback position',
+              semanticsValue: FormatUtils.formatDuration(pos),
             ),
           ),
           Text(FormatUtils.formatDuration(end > 0 ? end : dur), style: const TextStyle(color: Colors.white, fontSize: 11)),
@@ -224,6 +441,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _reloadChaptersAndSkips();
   }
 
+  void _seekToNextChapter() {
+    final svc = context.read<PlaybackService>();
+    final pos = svc.player.state.position.inMilliseconds;
+    final nextChapters = _chapters.where((c) => c.positionMs > pos).toList();
+    if (nextChapters.isNotEmpty) {
+      nextChapters.sort((a, b) => a.positionMs.compareTo(b.positionMs));
+      svc.seekTo(nextChapters.first.positionMs);
+    }
+  }
+
+  void _seekToPreviousChapter() {
+    final svc = context.read<PlaybackService>();
+    final pos = svc.player.state.position.inMilliseconds;
+    final prevChapters = _chapters.where((c) => c.positionMs < pos).toList();
+    if (prevChapters.isNotEmpty) {
+      prevChapters.sort((a, b) => b.positionMs.compareTo(a.positionMs));
+      svc.seekTo(prevChapters.first.positionMs);
+    } else if (_chapters.isNotEmpty) {
+      // Wrap to last chapter
+      _chapters.sort((a, b) => b.positionMs.compareTo(a.positionMs));
+      svc.seekTo(_chapters.first.positionMs);
+    }
+  }
+
   // ── Transport / seek card ────────────────────────────────────────────
 
   Widget _buildTransportCard(VideoEntity video) {
@@ -234,19 +475,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          _TransportBtn(icon: Icons.replay_rounded, tooltip: 'Restart', onTap: svc.restart),
-          _TransportBtn(icon: Icons.skip_previous_rounded, tooltip: 'Previous', onTap: svc.playPrevious),
-          _TransportBtn(icon: Icons.replay_10_rounded, tooltip: 'Rewind', onTap: () => svc.seekRelative(-video.seekJumpSec * 1000)),
-          _TransportBtn(
-            icon: playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded,
+          FocusableIconButton(icon: const Icon(Icons.replay_rounded), onPressed: svc.restart, tooltip: 'Restart', semanticsLabel: 'Restart video'),
+          FocusableIconButton(icon: const Icon(Icons.skip_previous_rounded), onPressed: svc.playPrevious, tooltip: 'Previous', semanticsLabel: 'Previous video'),
+          FocusableIconButton(icon: const Icon(Icons.replay_10_rounded), onPressed: () => svc.seekRelative(-video.seekJumpSec * 1000), tooltip: 'Rewind', semanticsLabel: 'Rewind ${video.seekJumpSec} seconds'),
+          FocusableIconButton(
+            icon: Icon(playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded),
             tooltip: playing ? 'Pause' : 'Play',
             size: 46,
             color: CrowColors.accentRed,
-            onTap: svc.togglePlayPause,
+            onPressed: svc.togglePlayPause,
+            semanticsLabel: playing ? 'Pause' : 'Play',
           ),
-          _TransportBtn(icon: Icons.forward_10_rounded, tooltip: 'Forward', onTap: () => svc.seekRelative(video.seekJumpSec * 1000)),
-          _TransportBtn(icon: Icons.skip_next_rounded, tooltip: 'Next', onTap: svc.playNext),
-          _TransportBtn(icon: Icons.stop_rounded, tooltip: 'Stop', onTap: () => svc.close()),
+          FocusableIconButton(icon: const Icon(Icons.forward_10_rounded), onPressed: () => svc.seekRelative(video.seekJumpSec * 1000), tooltip: 'Forward', semanticsLabel: 'Forward ${video.seekJumpSec} seconds'),
+          FocusableIconButton(icon: const Icon(Icons.skip_next_rounded), onPressed: svc.playNext, tooltip: 'Next', semanticsLabel: 'Next video'),
+          FocusableIconButton(icon: const Icon(Icons.stop_rounded), onPressed: () => svc.close(), tooltip: 'Stop', semanticsLabel: 'Stop playback'),
         ],
       ),
     );
@@ -261,19 +503,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
       valueLabel: '${(video.volumeLevel * 100).round()}%',
       child: Column(
         children: [
-          Slider(
+          FocusableSlider(
             value: (video.volumeLevel * 100).clamp(0, 100),
             min: 0,
             max: 100,
             onChanged: (v) => _setVolume(video, v),
+            semanticsLabel: 'Volume',
+            semanticsValue: '${(video.volumeLevel * 100).round()}%',
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _StepBtn(icon: Icons.remove_rounded, onTap: () => _adjustVolume(video, -5)),
-              _StepBtn(icon: Icons.volume_off_rounded, onTap: () => _setVolume(video, 0)),
-              _StepBtn(icon: Icons.restart_alt_rounded, onTap: () => _setVolume(video, 100)),
-              _StepBtn(icon: Icons.add_rounded, onTap: () => _adjustVolume(video, 5)),
+              FocusableIconButton(icon: const Icon(Icons.remove_rounded), onPressed: () => _adjustVolume(video, -5), tooltip: 'Decrease volume', semanticsLabel: 'Decrease volume by 5%'),
+              FocusableIconButton(icon: const Icon(Icons.volume_off_rounded), onPressed: () => _setVolume(video, 0), tooltip: 'Mute', semanticsLabel: 'Mute'),
+              FocusableIconButton(icon: const Icon(Icons.restart_alt_rounded), onPressed: () => _setVolume(video, 100), tooltip: 'Max volume', semanticsLabel: 'Set volume to 100%'),
+              FocusableIconButton(icon: const Icon(Icons.add_rounded), onPressed: () => _adjustVolume(video, 5), tooltip: 'Increase volume', semanticsLabel: 'Increase volume by 5%'),
             ],
           ),
         ],
@@ -302,29 +546,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _StepBtn(icon: Icons.remove_rounded, onTap: () => _adjustPitch(video, -1)),
+          FocusableIconButton(icon: const Icon(Icons.remove_rounded), onPressed: () => _adjustPitch(video, -1), tooltip: 'Decrease pitch', semanticsLabel: 'Decrease pitch by 1 semitone'),
           Expanded(
-            child: Slider(
+            child: FocusableSlider(
               value: video.pitchSemitones.clamp(-12, 12).toDouble(),
               min: -12,
               max: 12,
               divisions: 24,
               onChanged: (v) => _setPitch(video, v.round()),
+              semanticsLabel: 'Pitch',
+              semanticsValue: '${video.pitchSemitones > 0 ? '+' : ''}${video.pitchSemitones} st',
             ),
           ),
-          _StepBtn(icon: Icons.add_rounded, onTap: () => _adjustPitch(video, 1)),
-          _StepBtn(icon: Icons.restart_alt_rounded, onTap: () => _setPitch(video, 0)),
+          FocusableIconButton(icon: const Icon(Icons.add_rounded), onPressed: () => _adjustPitch(video, 1), tooltip: 'Increase pitch', semanticsLabel: 'Increase pitch by 1 semitone'),
+          FocusableIconButton(icon: const Icon(Icons.restart_alt_rounded), onPressed: () => _setPitch(video, 0), tooltip: 'Reset pitch', semanticsLabel: 'Reset pitch to 0'),
         ],
       ),
     );
-  }
-
-  void _adjustPitch(VideoEntity video, int delta) => _setPitch(video, (video.pitchSemitones + delta).clamp(-12, 12));
-
-  void _setPitch(VideoEntity video, int semitones) {
-    final svc = context.read<PlaybackService>();
-    svc.player.setPitch(pow(2, semitones / 12).toDouble());
-    _saveVideo(video.copyWith(pitchSemitones: semitones));
   }
 
   // ── Speed card ───────────────────────────────────────────────────────
@@ -337,28 +575,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _StepBtn(icon: Icons.remove_rounded, onTap: () => _adjustSpeed(video, -0.1)),
+          FocusableIconButton(icon: const Icon(Icons.remove_rounded), onPressed: () => _adjustSpeed(video, -0.1), tooltip: 'Decrease speed', semanticsLabel: 'Decrease speed by 0.1x'),
           Expanded(
-            child: Slider(
+            child: FocusableSlider(
               value: video.playbackSpeed.clamp(0.25, 3.0),
               min: 0.25,
               max: 3.0,
               onChanged: (v) => _setSpeed(video, v),
+              semanticsLabel: 'Playback speed',
+              semanticsValue: '${video.playbackSpeed.toStringAsFixed(2)}x',
             ),
           ),
-          _StepBtn(icon: Icons.add_rounded, onTap: () => _adjustSpeed(video, 0.1)),
-          _StepBtn(icon: Icons.restart_alt_rounded, onTap: () => _setSpeed(video, 1.0)),
+          FocusableIconButton(icon: const Icon(Icons.add_rounded), onPressed: () => _adjustSpeed(video, 0.1), tooltip: 'Increase speed', semanticsLabel: 'Increase speed by 0.1x'),
+          FocusableIconButton(icon: const Icon(Icons.restart_alt_rounded), onPressed: () => _setSpeed(video, 1.0), tooltip: 'Reset speed', semanticsLabel: 'Reset speed to 1.0x'),
         ],
       ),
     );
-  }
-
-  void _adjustSpeed(VideoEntity video, double delta) => _setSpeed(video, (video.playbackSpeed + delta).clamp(0.25, 3.0));
-
-  void _setSpeed(VideoEntity video, double speed) {
-    final svc = context.read<PlaybackService>();
-    svc.player.setRate(speed);
-    _saveVideo(video.copyWith(playbackSpeed: speed));
   }
 
   // ── Trim card ────────────────────────────────────────────────────────
@@ -374,25 +606,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Start: ${FormatUtils.formatDuration(video.trimStartMs)}', style: const TextStyle(color: CrowColors.onMuted, fontSize: 12)),
-          Slider(
+          FocusableSlider(
             value: video.trimStartMs.clamp(0, max(dur, 1)).toDouble(),
             min: 0,
             max: max(dur, 1).toDouble(),
             onChanged: (v) => _saveVideo(video.copyWith(trimStartMs: min(v.toInt(), end - 1000))),
+            semanticsLabel: 'Trim start',
+            semanticsValue: FormatUtils.formatDuration(video.trimStartMs),
           ),
           Text('End: ${FormatUtils.formatDuration(end)}', style: const TextStyle(color: CrowColors.onMuted, fontSize: 12)),
-          Slider(
+          FocusableSlider(
             value: end.clamp(0, max(dur, 1)).toDouble(),
             min: 0,
             max: max(dur, 1).toDouble(),
             onChanged: (v) => _saveVideo(video.copyWith(trimEndMs: max(v.toInt(), video.trimStartMs + 1000))),
+            semanticsLabel: 'Trim end',
+            semanticsValue: FormatUtils.formatDuration(end),
           ),
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: () => _saveVideo(video.copyWith(trimStartMs: 0, trimEndMs: 0)),
-              icon: const Icon(Icons.restart_alt_rounded, size: 16, color: CrowColors.accentOrange),
-              label: const Text('Reset trim', style: TextStyle(color: CrowColors.accentOrange)),
+            child: FocusableInkWell(
+              onTap: () => _saveVideo(video.copyWith(trimStartMs: 0, trimEndMs: 0)),
+              borderRadius: BorderRadius.circular(8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.restart_alt_rounded, size: 16, color: CrowColors.accentOrange),
+                  const SizedBox(width: 4),
+                  Text('Reset trim', style: TextStyle(color: CrowColors.accentOrange)),
+                ],
+              ),
             ),
           ),
         ],
@@ -473,7 +716,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  // ── Chapters card ────────────────────────────────────────────────────
+// ── Chapters card ────────────────────────────────────────────────────
 
   Widget _buildChaptersCard(VideoEntity video) {
     final svc = context.read<PlaybackService>();
@@ -489,20 +732,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
           else
             ..._chapters.map((c) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: InkWell(
+                  child: FocusableInkWell(
                     onTap: () => svc.seekTo(c.positionMs),
+                    borderRadius: BorderRadius.circular(8),
+                    semanticsLabel: 'Chapter: ${c.label} at ${FormatUtils.formatDuration(c.positionMs)}',
                     child: Row(
                       children: [
                         const Icon(Icons.bookmark_rounded, size: 16, color: CrowColors.accentBlue),
                         const SizedBox(width: 8),
                         Expanded(child: Text(c.label, style: const TextStyle(color: CrowColors.onBg, fontSize: 13))),
                         Text(FormatUtils.formatDuration(c.positionMs), style: const TextStyle(color: CrowColors.onMuted, fontSize: 12)),
-                        IconButton(
+                        FocusableIconButton(
                           icon: const Icon(Icons.close_rounded, size: 16, color: CrowColors.onMuted),
                           onPressed: () async {
                             await repoOf(context).deleteChapter(c.id);
                             _reloadChaptersAndSkips();
                           },
+                          tooltip: 'Delete chapter',
+                          semanticsLabel: 'Delete chapter ${c.label}',
+                          padding: const EdgeInsets.all(8),
                         ),
                       ],
                     ),
@@ -510,10 +758,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 )),
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: _addChapterAtCurrentPosition,
-              icon: const Icon(Icons.add_rounded, size: 16, color: CrowColors.accentBlue),
-              label: const Text('Add chapter here', style: TextStyle(color: CrowColors.accentBlue)),
+            child: FocusableInkWell(
+              onTap: _addChapterAtCurrentPosition,
+              borderRadius: BorderRadius.circular(8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.add_rounded, size: 16, color: CrowColors.accentBlue),
+                  const SizedBox(width: 4),
+                  Text('Add chapter here', style: TextStyle(color: CrowColors.accentBlue)),
+                ],
+              ),
             ),
           ),
         ],
@@ -631,6 +886,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ),
     );
   }
+
+  void _adjustPitch(VideoEntity video, int delta) => _setPitch(video, (video.pitchSemitones + delta).clamp(-12, 12));
+
+  void _setPitch(VideoEntity video, int semitones) {
+    final svc = context.read<PlaybackService>();
+    svc.player.setPitch(pow(2, semitones / 12).toDouble());
+    _saveVideo(video.copyWith(pitchSemitones: semitones));
+  }
+
+  void _adjustSpeed(VideoEntity video, double delta) => _setSpeed(video, (video.playbackSpeed + delta).clamp(0.25, 3.0));
+
+  void _setSpeed(VideoEntity video, double speed) {
+    final svc = context.read<PlaybackService>();
+    svc.player.setRate(speed);
+    _saveVideo(video.copyWith(playbackSpeed: speed));
+  }
 }
 
 // ── Small shared widgets ───────────────────────────────────────────────
@@ -669,52 +940,6 @@ class _Card extends StatelessWidget {
           child,
         ],
       ),
-    );
-  }
-}
-
-class _TransportBtn extends StatelessWidget {
-  const _TransportBtn({required this.icon, required this.onTap, this.tooltip, this.size = 30, this.color = CrowColors.onBg});
-  final IconData icon;
-  final VoidCallback onTap;
-  final String? tooltip;
-  final double size;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(tooltip: tooltip, iconSize: size, icon: Icon(icon, color: color), onPressed: onTap);
-  }
-}
-
-class _StepBtn extends StatelessWidget {
-  const _StepBtn({required this.icon, required this.onTap});
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      icon: Icon(icon, size: 18, color: CrowColors.onBg),
-      onPressed: onTap,
-      style: IconButton.styleFrom(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: const BorderSide(color: CrowColors.divider)),
-      ),
-    );
-  }
-}
-
-class _OverlayIconBtn extends StatelessWidget {
-  const _OverlayIconBtn({required this.icon, required this.onTap});
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 3),
-      decoration: const BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
-      child: IconButton(icon: Icon(icon, color: Colors.white, size: 20), onPressed: onTap),
     );
   }
 }

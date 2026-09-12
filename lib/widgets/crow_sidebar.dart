@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../state/shell_nav.dart';
 import '../theme/crow_colors.dart';
+import 'keyboard_accessible.dart';
 
 /// Left-hand desktop navigation rail. Replaces `BottomNavHelper.kt` /
 /// `menu_bottom_nav.xml` for the Windows/Web shell — primary
@@ -90,25 +91,24 @@ class _SidebarItem extends StatelessWidget {
     final color = selected ? CrowColors.accentYellow : CrowColors.onBg;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-      child: Material(
-        color: selected ? CrowColors.accentYellow.withValues(alpha: 0.12) : Colors.transparent,
+      child: FocusableInkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(8),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Container(
-            height: 42,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              border: Border(left: BorderSide(color: selected ? CrowColors.accentYellow : Colors.transparent, width: 3)),
-            ),
-            child: Row(
-              children: [
-                Icon(icon, size: 19, color: color),
-                const SizedBox(width: 14),
-                Text(label, style: TextStyle(color: color, fontSize: 13.5, fontWeight: selected ? FontWeight.bold : FontWeight.normal)),
-              ],
-            ),
+        semanticsLabel: label,
+        child: Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: selected ? CrowColors.accentYellow.withValues(alpha: 0.12) : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            border: Border(left: BorderSide(color: selected ? CrowColors.accentYellow : Colors.transparent, width: 3)),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 19, color: color),
+              const SizedBox(width: 14),
+              Text(label, style: TextStyle(color: color, fontSize: 13.5, fontWeight: selected ? FontWeight.bold : FontWeight.normal)),
+            ],
           ),
         ),
       ),

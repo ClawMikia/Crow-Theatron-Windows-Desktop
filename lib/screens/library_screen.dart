@@ -6,6 +6,7 @@ import '../widgets/section_header.dart';
 import '../widgets/video_tiles.dart';
 import 'main_screen.dart';
 import 'player_screen.dart';
+import '../widgets/keyboard_accessible.dart';
 
 enum LibraryMode { all, favorites, continueWatching, recentlyPlayed, playlist }
 
@@ -241,8 +242,10 @@ class _FolderTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = selected ? CrowColors.accentYellow : CrowColors.onBg;
-    return InkWell(
+    return FocusableInkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      semanticsLabel: '$label, $count videos',
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(color: selected ? CrowColors.accentYellow.withValues(alpha: 0.1) : null),

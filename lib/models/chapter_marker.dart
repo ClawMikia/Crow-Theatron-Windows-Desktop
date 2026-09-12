@@ -15,7 +15,7 @@ class ChapterMarker {
     required this.label,
     this.isAutoDetected = false,
     required this.createdAt,
-  });
+  });  
 
   ChapterMarker copyWith({int? id, int? videoId, int? positionMs, String? label}) => ChapterMarker(
         id: id ?? this.id,
