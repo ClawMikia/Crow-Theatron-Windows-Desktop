@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
 
+import '../data/app_prefs.dart';
 import '../data/video_repository.dart';
 import '../models/chapter_marker.dart';
 import '../models/enhancement_mode.dart';
@@ -13,6 +14,8 @@ import '../services/playback_service.dart';
 import '../shortcuts/app_shortcuts.dart';
 import '../theme/crow_colors.dart';
 import '../util/format_utils.dart';
+import '../util/seek_icons.dart';
+import '../widgets/confirm_dialog.dart';
 import '../widgets/crow_title_bar.dart';
 import '../widgets/player_dialogs.dart';
 import 'main_screen.dart';
@@ -41,6 +44,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   VideoRepository? _repo;
   final FocusNode _playerFocusNode =
       FocusNode(debugLabel: 'player keyboard focus');
+
+  /// The id of the video that is actually playing right now. Differs from
+  /// `widget.videoId` after auto-advance / Next / Previous, so everything
+  /// (chapters, skips, refresh-from-db) follows the CURRENT video.
+  int get _videoId => _video?.id ?? widget.videoId;
 
   @override
   void initState() {
@@ -82,15 +90,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _refreshVideo() async {
-    final updated = await _repo!.getById(widget.videoId);
+    final updated = await _repo!.getById(_videoId);
     if (updated != null && mounted && updated != _video) {
       setState(() => _video = updated);
     }
   }
 
   Future<void> _reloadChaptersAndSkips() async {
-    final chapters = await _repo!.listChapters(widget.videoId);
-    final skips = await _repo!.listSkips(widget.videoId);
+    final chapters = await _repo!.listChapters(_videoId);
+    final skips = await _repo!.listSkips(_videoId);
     if (mounted) {
       setState(() {
         _chapters = chapters;
@@ -109,6 +117,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _saveVideo(VideoEntity updated) async {
+    // Volume is owned by PlaybackService (its changes are saved a moment
+    // after they happen) — never let an unrelated edit write back a stale
+    // volume.
+    final live = _svc?.currentVideo;
+    if (live != null && live.id == updated.id) {
+      updated = updated.copyWith(volumeLevel: live.volumeLevel);
+    }
     setState(() => _video = updated);
     await _repo!.savePreferences(updated);
     if (_svc?.currentVideo?.id == updated.id) {
@@ -193,11 +208,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
         final dur = _svc?.player.state.duration.inMilliseconds ?? 0;
         if (dur > 0) _svc?.seekTo(dur);
       },
-      pitchDown: () => _adjustPitch(video, -1),
-      pitchUp: () => _adjustPitch(video, 1),
+      pitchDown: () => _adjustPitch(video, -_prefs.defaultPitchStepSemitones),
+      pitchUp: () => _adjustPitch(video, _prefs.defaultPitchStepSemitones),
       resetPitch: () => _setPitch(video, 0),
-      speedDown: () => _adjustSpeed(video, -0.1),
-      speedUp: () => _adjustSpeed(video, 0.1),
+      speedDown: () => _adjustSpeed(video, -_prefs.defaultSpeedStep),
+      speedUp: () => _adjustSpeed(video, _prefs.defaultSpeedStep),
       resetSpeed: () => _setSpeed(video, 1.0),
       toggleAutoplay: () =>
           _saveVideo(video.copyWith(autoPlayNext: !video.autoPlayNext)),
@@ -218,7 +233,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         initialStartMs: pos, initialEndMs: pos + 10000);
     if (result == null) return;
     await repoOf(context)
-        .addSkip(widget.videoId, result.$1, result.$2, label: result.$3);
+        .addSkip(_videoId, result.$1, result.$2, label: result.$3);
     _reloadChaptersAndSkips();
   }
 
@@ -403,7 +418,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final posMs = svc.player.state.position.inMilliseconds;
     final label = await showAddChapterDialog(context, posMs);
     if (label == null) return;
-    await repoOf(context).addChapter(widget.videoId, posMs, label);
+    await repoOf(context).addChapter(_videoId, posMs, label);
     _reloadChaptersAndSkips();
   }
 
@@ -435,6 +450,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Widget _buildTransportCard(VideoEntity video) {
     final svc = context.watch<PlaybackService>();
+    final seekSec = context.watch<AppPrefs>().defaultSeekJumpSec;
     final playing = svc.player.state.playing;
     return _Card(
       accent: CrowColors.accentRed,
@@ -452,10 +468,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
               tooltip: 'Previous',
               semanticsLabel: 'Previous video'),
           FocusableIconButton(
-              icon: const Icon(Icons.replay_10_rounded),
-              onPressed: () => svc.seekRelative(-video.seekJumpSec * 1000),
-              tooltip: 'Rewind',
-              semanticsLabel: 'Rewind ${video.seekJumpSec} seconds'),
+              icon: Icon(seekIcon(seekSec, forward: false)),
+              onPressed: () => svc.seekRelative(-svc.seekStepMs),
+              tooltip: 'Rewind ${seekSec}s',
+              semanticsLabel: 'Rewind $seekSec seconds'),
           FocusableIconButton(
             icon: Icon(playing
                 ? Icons.pause_circle_filled_rounded
@@ -463,14 +479,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
             tooltip: playing ? 'Pause' : 'Play',
             size: 46,
             color: CrowColors.accentRed,
-            onPressed: svc.togglePlayPause,
+            onPressed: () => _playPause(svc, video),
             semanticsLabel: playing ? 'Pause' : 'Play',
           ),
           FocusableIconButton(
-              icon: const Icon(Icons.forward_10_rounded),
-              onPressed: () => svc.seekRelative(video.seekJumpSec * 1000),
-              tooltip: 'Forward',
-              semanticsLabel: 'Forward ${video.seekJumpSec} seconds'),
+              icon: Icon(seekIcon(seekSec, forward: true)),
+              onPressed: () => svc.seekRelative(svc.seekStepMs),
+              tooltip: 'Forward ${seekSec}s',
+              semanticsLabel: 'Forward $seekSec seconds'),
           FocusableIconButton(
               icon: const Icon(Icons.skip_next_rounded),
               onPressed: svc.playNext,
@@ -478,7 +494,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
               semanticsLabel: 'Next video'),
           FocusableIconButton(
               icon: const Icon(Icons.stop_rounded),
-              onPressed: () => svc.close(),
+              // Stop = pause + back to the start. The video stays loaded,
+              // so every other button keeps working afterwards.
+              onPressed: svc.stop,
               tooltip: 'Stop',
               semanticsLabel: 'Stop playback'),
         ],
@@ -486,47 +504,65 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  /// Play/Pause that also recovers if nothing is loaded in the engine.
+  void _playPause(PlaybackService svc, VideoEntity video) {
+    if (svc.currentVideo == null) {
+      svc.play(video, siblings: widget.siblingQueue);
+    } else {
+      svc.togglePlayPause();
+    }
+  }
+
+  AppPrefs get _prefs => context.read<AppPrefs>();
+
   // ── Volume card ──────────────────────────────────────────────────────
 
   Widget _buildVolumeCard(VideoEntity video) {
+    final svc = context.watch<PlaybackService>();
+    final step = context.watch<AppPrefs>().defaultVolumeStepPercent;
+    final muted = svc.isMuted;
+    // Show the live level (0 while muted). The level from BEFORE the mute
+    // is remembered by the service, so Unmute restores exactly that.
+    final volume = muted ? 0.0 : svc.player.state.volume.clamp(0, 100).toDouble();
     return _Card(
       accent: CrowColors.accentCyan,
       title: 'Volume',
-      valueLabel: '${(video.volumeLevel * 100).round()}%',
+      valueLabel: '${volume.round()}%',
       child: Column(
         children: [
           FocusableSlider(
-            value: (video.volumeLevel * 100).clamp(0, 100),
+            value: volume,
             min: 0,
             max: 100,
-            onChanged: (v) => _setVolume(video, v),
+            onChanged: (v) => svc.setVolumePercent(v),
             onKeyEvent: _handlePlayerSliderKeyEvent,
             semanticsLabel: 'Volume',
-            semanticsValue: '${(video.volumeLevel * 100).round()}%',
+            semanticsValue: '${volume.round()}%',
           ),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               FocusableIconButton(
                   icon: const Icon(Icons.remove_rounded),
-                  onPressed: () => _adjustVolume(video, -5),
+                  onPressed: () => svc.adjustVolume(-step.toDouble()),
                   tooltip: 'Decrease volume',
-                  semanticsLabel: 'Decrease volume by 5%'),
+                  semanticsLabel: 'Decrease volume by $step%'),
               FocusableIconButton(
-                  icon: const Icon(Icons.volume_off_rounded),
-                  onPressed: () => _setVolume(video, 0),
-                  tooltip: 'Mute',
-                  semanticsLabel: 'Mute'),
+                  icon: Icon(muted ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+                      color: muted ? CrowColors.accentRed : null),
+                  onPressed: svc.toggleMute,
+                  tooltip: muted ? 'Unmute' : 'Mute',
+                  semanticsLabel: muted ? 'Unmute' : 'Mute'),
               FocusableIconButton(
                   icon: const Icon(Icons.restart_alt_rounded),
-                  onPressed: () => _setVolume(video, 100),
+                  onPressed: () => svc.setVolumePercent(100),
                   tooltip: 'Max volume',
                   semanticsLabel: 'Set volume to 100%'),
               FocusableIconButton(
                   icon: const Icon(Icons.add_rounded),
-                  onPressed: () => _adjustVolume(video, 5),
+                  onPressed: () => svc.adjustVolume(step.toDouble()),
                   tooltip: 'Increase volume',
-                  semanticsLabel: 'Increase volume by 5%'),
+                  semanticsLabel: 'Increase volume by $step%'),
             ],
           ),
         ],
@@ -534,51 +570,41 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  void _adjustVolume(VideoEntity video, int deltaPercent) {
-    final next = ((video.volumeLevel * 100) + deltaPercent).clamp(0, 100);
-    _setVolume(video, next.toDouble());
-  }
-
-  void _setVolume(VideoEntity video, double percent) {
-    final svc = context.read<PlaybackService>();
-    svc.player.setVolume(percent);
-    _saveVideo(video.copyWith(volumeLevel: percent / 100));
-  }
-
   // ── Pitch card ───────────────────────────────────────────────────────
 
   Widget _buildPitchCard(VideoEntity video) {
+    final step = context.watch<AppPrefs>().defaultPitchStepSemitones;
+    final label = '${video.pitchSemitones > 0 ? '+' : ''}${_fmtNum(video.pitchSemitones)} st';
     return _Card(
       accent: CrowColors.accentGreen,
       title: 'Pitch',
-      valueLabel:
-          '${video.pitchSemitones > 0 ? '+' : ''}${video.pitchSemitones} st',
+      valueLabel: label,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           FocusableIconButton(
               icon: const Icon(Icons.remove_rounded),
-              onPressed: () => _adjustPitch(video, -1),
+              onPressed: () => _adjustPitch(video, -step),
               tooltip: 'Decrease pitch',
-              semanticsLabel: 'Decrease pitch by 1 semitone'),
+              semanticsLabel: 'Decrease pitch by ${_fmtNum(step)} semitone'),
           Expanded(
             child: FocusableSlider(
-              value: video.pitchSemitones.clamp(-12, 12).toDouble(),
+              value: video.pitchSemitones.clamp(-12.0, 12.0),
               min: -12,
               max: 12,
-              divisions: 24,
-              onChanged: (v) => _setPitch(video, v.round()),
+              // Snaps to the pitch step from Settings.
+              divisions: (24 / step).round().clamp(1, 480),
+              onChanged: (v) => _setPitch(video, v),
               onKeyEvent: _handlePlayerSliderKeyEvent,
               semanticsLabel: 'Pitch',
-              semanticsValue:
-                  '${video.pitchSemitones > 0 ? '+' : ''}${video.pitchSemitones} st',
+              semanticsValue: label,
             ),
           ),
           FocusableIconButton(
               icon: const Icon(Icons.add_rounded),
-              onPressed: () => _adjustPitch(video, 1),
+              onPressed: () => _adjustPitch(video, step),
               tooltip: 'Increase pitch',
-              semanticsLabel: 'Increase pitch by 1 semitone'),
+              semanticsLabel: 'Increase pitch by ${_fmtNum(step)} semitone'),
           FocusableIconButton(
               icon: const Icon(Icons.restart_alt_rounded),
               onPressed: () => _setPitch(video, 0),
@@ -592,6 +618,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // ── Speed card ───────────────────────────────────────────────────────
 
   Widget _buildSpeedCard(VideoEntity video) {
+    final step = context.watch<AppPrefs>().defaultSpeedStep;
     return _Card(
       accent: CrowColors.accentOrange,
       title: 'Speed',
@@ -601,9 +628,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
         children: [
           FocusableIconButton(
               icon: const Icon(Icons.remove_rounded),
-              onPressed: () => _adjustSpeed(video, -0.1),
+              onPressed: () => _adjustSpeed(video, -step),
               tooltip: 'Decrease speed',
-              semanticsLabel: 'Decrease speed by 0.1x'),
+              semanticsLabel: 'Decrease speed by ${_fmtNum(step)}x'),
           Expanded(
             child: FocusableSlider(
               value: video.playbackSpeed.clamp(0.25, 3.0),
@@ -617,9 +644,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
           FocusableIconButton(
               icon: const Icon(Icons.add_rounded),
-              onPressed: () => _adjustSpeed(video, 0.1),
+              onPressed: () => _adjustSpeed(video, step),
               tooltip: 'Increase speed',
-              semanticsLabel: 'Increase speed by 0.1x'),
+              semanticsLabel: 'Increase speed by ${_fmtNum(step)}x'),
           FocusableIconButton(
               icon: const Icon(Icons.restart_alt_rounded),
               onPressed: () => _setSpeed(video, 1.0),
@@ -630,6 +657,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  /// 1.0 → "1", 0.5 → "0.5" (no trailing zeros).
+  String _fmtNum(double v) {
+    var t = v.toStringAsFixed(2);
+    if (t.contains('.')) {
+      t = t.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+    }
+    return t;
+  }
+
   // ── Trim card ────────────────────────────────────────────────────────
 
   Widget _buildTrimCard(VideoEntity video) {
@@ -638,6 +674,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ? svc.player.state.duration.inMilliseconds
         : video.durationMs;
     final end = video.trimEndMs > 0 ? video.trimEndMs : dur;
+    // The trim sliders snap to the "Trim step" from Settings.
+    final trimStepMs = context.watch<AppPrefs>().defaultTrimStepMs;
+    final trimDivisions = dur > 0 ? (dur / trimStepMs).round().clamp(1, 2000) : null;
     return _Card(
       accent: CrowColors.accentOrange,
       title: 'Trim',
@@ -650,6 +689,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             value: video.trimStartMs.clamp(0, max(dur, 1)).toDouble(),
             min: 0,
             max: max(dur, 1).toDouble(),
+            divisions: trimDivisions,
             onChanged: (v) => _saveVideo(
                 video.copyWith(trimStartMs: min(v.toInt(), end - 1000))),
             onKeyEvent: _handlePlayerSliderKeyEvent,
@@ -662,6 +702,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             value: end.clamp(0, max(dur, 1)).toDouble(),
             min: 0,
             max: max(dur, 1).toDouble(),
+            divisions: trimDivisions,
             onChanged: (v) => _saveVideo(video.copyWith(
                 trimEndMs: max(v.toInt(), video.trimStartMs + 1000))),
             onKeyEvent: _handlePlayerSliderKeyEvent,
@@ -725,7 +766,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         initialStartMs: pos, initialEndMs: pos + 10000);
                     if (result == null) return;
                     await repoOf(context).addSkip(
-                        widget.videoId, result.$1, result.$2,
+                        _videoId, result.$1, result.$2,
                         label: result.$3);
                     _reloadChaptersAndSkips();
                   },
@@ -768,8 +809,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     tooltip: 'Delete skip',
                     semanticsLabel: 'Delete skip ${s.label}',
                     onPressed: () async {
+                      final ok = await confirmDestructive(
+                        context,
+                        title: 'Delete skip?',
+                        message: 'Delete the timeline skip "${s.label}" '
+                            '(${FormatUtils.formatDuration(s.startMs)} – ${FormatUtils.formatDuration(s.endMs)})?',
+                      );
+                      if (!ok || !mounted) return;
                       await repoOf(context).deleteSkip(s.id);
-                      Navigator.pop(ctx);
+                      if (ctx.mounted) Navigator.pop(ctx);
                       _reloadChaptersAndSkips();
                     },
                   ),
@@ -817,6 +865,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           icon: const Icon(Icons.close_rounded,
                               size: 16, color: CrowColors.onMuted),
                           onPressed: () async {
+                            final ok = await confirmDestructive(
+                              context,
+                              title: 'Delete chapter?',
+                              message: 'Delete the chapter "${c.label}" at ${FormatUtils.formatDuration(c.positionMs)}?',
+                            );
+                            if (!ok || !mounted) return;
                             await repoOf(context).deleteChapter(c.id);
                             _reloadChaptersAndSkips();
                           },
@@ -978,22 +1032,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  void _adjustPitch(VideoEntity video, int delta) =>
-      _setPitch(video, (video.pitchSemitones + delta).clamp(-12, 12));
+  double _round2(double v) => (v * 100).round() / 100;
 
-  void _setPitch(VideoEntity video, int semitones) {
+  void _adjustPitch(VideoEntity video, double delta) =>
+      _setPitch(video, video.pitchSemitones + delta);
+
+  void _setPitch(VideoEntity video, double semitones) {
+    final st = _round2(semitones.clamp(-12.0, 12.0));
     final svc = context.read<PlaybackService>();
-    svc.player.setPitch(pow(2, semitones / 12).toDouble());
-    _saveVideo(video.copyWith(pitchSemitones: semitones));
+    svc.player.setPitch(pow(2, st / 12).toDouble());
+    _saveVideo(video.copyWith(pitchSemitones: st));
   }
 
   void _adjustSpeed(VideoEntity video, double delta) =>
-      _setSpeed(video, (video.playbackSpeed + delta).clamp(0.25, 3.0));
+      _setSpeed(video, video.playbackSpeed + delta);
 
   void _setSpeed(VideoEntity video, double speed) {
+    final sp = _round2(speed.clamp(0.25, 3.0));
     final svc = context.read<PlaybackService>();
-    svc.player.setRate(speed);
-    _saveVideo(video.copyWith(playbackSpeed: speed));
+    svc.player.setRate(sp);
+    _saveVideo(video.copyWith(playbackSpeed: sp));
   }
 }
 

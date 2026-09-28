@@ -86,20 +86,24 @@ class AppShortcutsScope extends StatelessWidget {
 /// on its own `Navigator` route and so needs its own copy). Defining
 /// the bindings in exactly one place guarantees both surfaces agree.
 List<AppShortcut> buildTransportShortcuts(PlaybackService svc) {
-  void seekRel(int ms) => svc.seekRelative(ms);
-  void volume(double delta) =>
-      svc.player.setVolume((svc.player.state.volume + delta).clamp(0, 100));
+  // Step sizes come from Settings → Display & Playback and are read at
+  // the moment the key is pressed, so changing a setting takes effect
+  // immediately.
+  void seekBy(int direction, {int multiplier = 1}) =>
+      svc.seekRelative(direction * svc.seekStepMs * multiplier);
+  void volume(int direction) =>
+      svc.adjustVolume((direction * svc.prefs.defaultVolumeStepPercent).toDouble());
 
   return [
     AppShortcut(const SingleActivator(LogicalKeyboardKey.space), 'Space', _guarded(svc.togglePlayPause), category: 'Playback'),
     AppShortcut(const SingleActivator(LogicalKeyboardKey.keyK), 'K', _guarded(svc.togglePlayPause), category: 'Playback'),
     AppShortcut(const SingleActivator(LogicalKeyboardKey.keyM), 'M', _guarded(svc.toggleMute), category: 'Playback'),
-    AppShortcut(const SingleActivator(LogicalKeyboardKey.arrowLeft), '←', _guarded(() => seekRel(-10000)), category: 'Playback'),
-    AppShortcut(const SingleActivator(LogicalKeyboardKey.arrowRight), '→', _guarded(() => seekRel(10000)), category: 'Playback'),
-    AppShortcut(const SingleActivator(LogicalKeyboardKey.arrowLeft, shift: true), 'Shift+←', _guarded(() => seekRel(-30000)), category: 'Playback'),
-    AppShortcut(const SingleActivator(LogicalKeyboardKey.arrowRight, shift: true), 'Shift+→', _guarded(() => seekRel(30000)), category: 'Playback'),
-    AppShortcut(const SingleActivator(LogicalKeyboardKey.arrowUp), '↑', _guarded(() => volume(5)), category: 'Playback'),
-    AppShortcut(const SingleActivator(LogicalKeyboardKey.arrowDown), '↓', _guarded(() => volume(-5)), category: 'Playback'),
+    AppShortcut(const SingleActivator(LogicalKeyboardKey.arrowLeft), '←', _guarded(() => seekBy(-1)), category: 'Playback'),
+    AppShortcut(const SingleActivator(LogicalKeyboardKey.arrowRight), '→', _guarded(() => seekBy(1)), category: 'Playback'),
+    AppShortcut(const SingleActivator(LogicalKeyboardKey.arrowLeft, shift: true), 'Shift+←', _guarded(() => seekBy(-1, multiplier: 3)), category: 'Playback'),
+    AppShortcut(const SingleActivator(LogicalKeyboardKey.arrowRight, shift: true), 'Shift+→', _guarded(() => seekBy(1, multiplier: 3)), category: 'Playback'),
+    AppShortcut(const SingleActivator(LogicalKeyboardKey.arrowUp), '↑', _guarded(() => volume(1)), category: 'Playback'),
+    AppShortcut(const SingleActivator(LogicalKeyboardKey.arrowDown), '↓', _guarded(() => volume(-1)), category: 'Playback'),
     AppShortcut(const SingleActivator(LogicalKeyboardKey.arrowLeft, control: true), 'Ctrl+←', _guarded(svc.playPrevious), category: 'Playback'),
     AppShortcut(const SingleActivator(LogicalKeyboardKey.arrowRight, control: true), 'Ctrl+→', _guarded(svc.playNext), category: 'Playback'),
 
@@ -115,9 +119,9 @@ List<AppShortcut> buildTransportShortcuts(PlaybackService svc) {
     AppShortcut(const SingleActivator(LogicalKeyboardKey.mediaPlayPause), 'Media Play/Pause', svc.togglePlayPause, category: 'Hardware media keys'),
     AppShortcut(const SingleActivator(LogicalKeyboardKey.mediaTrackNext), 'Media Next', svc.playNext, category: 'Hardware media keys'),
     AppShortcut(const SingleActivator(LogicalKeyboardKey.mediaTrackPrevious), 'Media Previous', svc.playPrevious, category: 'Hardware media keys'),
-    AppShortcut(const SingleActivator(LogicalKeyboardKey.mediaStop), 'Media Stop', () { if (svc.player.state.playing) svc.togglePlayPause(); }, category: 'Hardware media keys'),
-    AppShortcut(const SingleActivator(LogicalKeyboardKey.audioVolumeUp), 'Volume Up key', () => volume(5), category: 'Hardware media keys'),
-    AppShortcut(const SingleActivator(LogicalKeyboardKey.audioVolumeDown), 'Volume Down key', () => volume(-5), category: 'Hardware media keys'),
+    AppShortcut(const SingleActivator(LogicalKeyboardKey.mediaStop), 'Media Stop', svc.stop, category: 'Hardware media keys'),
+    AppShortcut(const SingleActivator(LogicalKeyboardKey.audioVolumeUp), 'Volume Up key', () => volume(1), category: 'Hardware media keys'),
+    AppShortcut(const SingleActivator(LogicalKeyboardKey.audioVolumeDown), 'Volume Down key', () => volume(-1), category: 'Hardware media keys'),
     AppShortcut(const SingleActivator(LogicalKeyboardKey.audioVolumeMute), 'Volume Mute key', svc.toggleMute, category: 'Hardware media keys'),
   ];
 }

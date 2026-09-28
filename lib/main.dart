@@ -8,6 +8,7 @@ import 'data/app_prefs.dart';
 import 'data/video_repository.dart';
 import 'screens/splash_screen.dart';
 import 'services/playback_service.dart';
+import 'services/thumbnail_service.dart';
 import 'state/shell_nav.dart';
 import 'theme/crow_theme.dart';
 
@@ -61,6 +62,13 @@ class CrowTheatronApp extends StatelessWidget {
         ChangeNotifierProvider<VideoRepository>.value(value: repo),
         ChangeNotifierProvider<PlaybackService>(create: (_) => PlaybackService(repo)),
         ChangeNotifierProvider<ShellNavState>(create: (_) => ShellNavState()),
+        // Background preview-frame generator for library thumbnails.
+        // `lazy: false` so it starts working as soon as the app opens.
+        Provider<ThumbnailService>(
+          lazy: false,
+          create: (ctx) => ThumbnailService(repo, ctx.read<PlaybackService>())..start(),
+          dispose: (_, s) => s.dispose(),
+        ),
       ],
       child: MaterialApp(
         title: 'Crow Théatron',

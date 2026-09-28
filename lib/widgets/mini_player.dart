@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
 
+import '../data/app_prefs.dart';
 import '../screens/player_screen.dart';
 import '../services/playback_service.dart';
 import '../theme/crow_colors.dart';
 import '../util/format_utils.dart';
+import '../util/seek_icons.dart';
 import 'keyboard_accessible.dart';
 
 /// Full-width bottom-docked playback bar — sits under the sidebar +
@@ -38,6 +40,9 @@ class _MiniPlayerState extends State<MiniPlayer> {
       _controllerForVideoId = video.id;
     }
 
+    final seekSec = context.watch<AppPrefs>().defaultSeekJumpSec;
+    final muted = svc.isMuted;
+    final volume = muted ? 0.0 : svc.player.state.volume.clamp(0, 100).toDouble();
     final playing = svc.player.state.playing;
     final pos = svc.player.state.position.inMilliseconds;
     final dur = svc.player.state.duration.inMilliseconds;
@@ -51,7 +56,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
     // from whatever the user was interacting with elsewhere in the
     // app).
     return Container(
-        height: 78,
+        height: 92,
         decoration: const BoxDecoration(
           color: CrowColors.surfaceElevated,
           border: Border(top: BorderSide(color: CrowColors.divider)),
@@ -105,14 +110,17 @@ class _MiniPlayerState extends State<MiniPlayer> {
           // ── Transport + seek ──
           Expanded(
             flex: 5,
-            child: Column(
+            child: Padding(
+              // Lifts the seekbar clear of the bottom edge of the window.
+              padding: const EdgeInsets.only(top: 6, bottom: 12),
+              child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     FocusableIconButton(icon: const Icon(Icons.skip_previous_rounded), onPressed: svc.playPrevious, tooltip: 'Previous', semanticsLabel: 'Previous track'),
-                    FocusableIconButton(icon: const Icon(Icons.replay_10_rounded), onPressed: () => svc.seekRelative(-10000), tooltip: 'Rewind 10s', semanticsLabel: 'Rewind 10 seconds'),
+                    FocusableIconButton(icon: Icon(seekIcon(seekSec, forward: false)), onPressed: () => svc.seekRelative(-svc.seekStepMs), tooltip: 'Rewind ${seekSec}s', semanticsLabel: 'Rewind $seekSec seconds'),
                     FocusableIconButton(
                       icon: Icon(playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded),
                       onPressed: svc.togglePlayPause,
@@ -121,7 +129,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                       tooltip: playing ? 'Pause' : 'Play',
                       semanticsLabel: playing ? 'Pause' : 'Play',
                     ),
-                    FocusableIconButton(icon: const Icon(Icons.forward_10_rounded), onPressed: () => svc.seekRelative(10000), tooltip: 'Forward 10s', semanticsLabel: 'Forward 10 seconds'),
+                    FocusableIconButton(icon: Icon(seekIcon(seekSec, forward: true)), onPressed: () => svc.seekRelative(svc.seekStepMs), tooltip: 'Forward ${seekSec}s', semanticsLabel: 'Forward $seekSec seconds'),
                     FocusableIconButton(icon: const Icon(Icons.skip_next_rounded), onPressed: svc.playNext, tooltip: 'Next', semanticsLabel: 'Next track'),
                   ],
                 ),
@@ -130,13 +138,25 @@ class _MiniPlayerState extends State<MiniPlayer> {
                     const SizedBox(width: 12),
                     Text(FormatUtils.formatDuration(pos), style: const TextStyle(color: CrowColors.onMuted, fontSize: 10)),
                     Expanded(
-                      child: FocusableSlider(
-                        value: pos.clamp(0, dur > 0 ? dur : 1).toDouble(),
-                        min: 0,
-                        max: (dur > 0 ? dur : 1).toDouble(),
-                        onChanged: (v) => svc.seekTo(v.toInt()),
-                        semanticsLabel: 'Playback position',
-                        semanticsValue: FormatUtils.formatDuration(pos),
+                      child: SliderTheme(
+                        // Slim track + small thumb so the seekbar is only
+                        // ~24px tall instead of Material's 48px.
+                        data: SliderTheme.of(context).copyWith(
+                          trackHeight: 3,
+                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                          overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                        ),
+                        child: SizedBox(
+                          height: 24,
+                          child: FocusableSlider(
+                            value: pos.clamp(0, dur > 0 ? dur : 1).toDouble(),
+                            min: 0,
+                            max: (dur > 0 ? dur : 1).toDouble(),
+                            onChanged: (v) => svc.seekTo(v.toInt()),
+                            semanticsLabel: 'Playback position',
+                            semanticsValue: FormatUtils.formatDuration(pos),
+                          ),
+                        ),
                       ),
                     ),
                     Text(FormatUtils.formatDuration(dur), style: const TextStyle(color: CrowColors.onMuted, fontSize: 10)),
@@ -144,6 +164,7 @@ class _MiniPlayerState extends State<MiniPlayer> {
                   ],
                 ),
               ],
+            ),
             ),
           ),
           // ── Volume + close ──
@@ -153,20 +174,20 @@ class _MiniPlayerState extends State<MiniPlayer> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 FocusableIconButton(
-                  icon: const Icon(Icons.volume_up_rounded, size: 18, color: CrowColors.onMuted),
+                  icon: Icon(muted ? Icons.volume_off_rounded : Icons.volume_up_rounded, size: 18, color: muted ? CrowColors.accentRed : CrowColors.onMuted),
                   onPressed: () => svc.toggleMute(),
-                  tooltip: 'Mute/Unmute',
-                  semanticsLabel: 'Mute/Unmute',
+                  tooltip: muted ? 'Unmute' : 'Mute',
+                  semanticsLabel: muted ? 'Unmute' : 'Mute',
                 ),
                 SizedBox(
                   width: 90,
                   child: FocusableSlider(
-                    value: (video.volumeLevel * 100).clamp(0, 100),
+                    value: volume,
                     min: 0,
                     max: 100,
-                    onChanged: (v) => svc.player.setVolume(v),
+                    onChanged: (v) => svc.setVolumePercent(v),
                     semanticsLabel: 'Volume',
-                    semanticsValue: '${(video.volumeLevel * 100).round()}%',
+                    semanticsValue: '${volume.round()}%',
                   ),
                 ),
                 FocusableIconButton(icon: const Icon(Icons.close_rounded), onPressed: svc.close, tooltip: 'Close player', semanticsLabel: 'Close mini player'),

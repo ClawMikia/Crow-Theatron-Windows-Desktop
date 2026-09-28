@@ -14,7 +14,7 @@ class VideoEntity {
   final int durationMs;
   final int sizeBytes;
   final int positionMs;
-  final int pitchSemitones;
+  final double pitchSemitones;
   final int trimStartMs;
   final int trimEndMs;
   final bool favorite;
@@ -94,7 +94,7 @@ class VideoEntity {
     int? durationMs,
     int? sizeBytes,
     int? positionMs,
-    int? pitchSemitones,
+    double? pitchSemitones,
     int? trimStartMs,
     int? trimEndMs,
     bool? favorite,
@@ -177,6 +177,7 @@ class VideoEntity {
         'seek_jump_sec': seekJumpSec,
         'auto_play_next': autoPlayNext ? 1 : 0,
         'loop_playback': loopPlayback ? 1 : 0,
+        'shuffle_playlist': shufflePlaylist ? 1 : 0,
         'enhancement': enhancement.storageKey,
         'last_played_at': lastPlayedAt,
         'playback_speed': playbackSpeed,
@@ -207,13 +208,14 @@ class VideoEntity {
         durationMs: m['duration_ms'] as int? ?? 0,
         sizeBytes: m['size_bytes'] as int? ?? 0,
         positionMs: m['position_ms'] as int? ?? 0,
-        pitchSemitones: m['pitch_semitones'] as int? ?? 0,
+        pitchSemitones: (m['pitch_semitones'] as num?)?.toDouble() ?? 0,
         trimStartMs: m['trim_start_ms'] as int? ?? 0,
         trimEndMs: m['trim_end_ms'] as int? ?? 0,
         favorite: (m['favorite'] as int? ?? 0) == 1,
         seekJumpSec: m['seek_jump_sec'] as int? ?? 10,
         autoPlayNext: (m['auto_play_next'] as int? ?? 0) == 1,
         loopPlayback: (m['loop_playback'] as int? ?? 0) == 1,
+        shufflePlaylist: (m['shuffle_playlist'] as int? ?? 0) == 1,
         enhancement: EnhancementMode.fromKey(m['enhancement'] as String?),
         lastPlayedAt: m['last_played_at'] as int? ?? 0,
         playbackSpeed: (m['playback_speed'] as num?)?.toDouble() ?? 1.0,

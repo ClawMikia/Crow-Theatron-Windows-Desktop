@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 
+import '../data/app_prefs.dart';
 import '../data/video_repository.dart';
 import '../models/video_entity.dart';
 import 'media_session/media_session_service.dart';
@@ -53,6 +54,12 @@ class PlaybackService extends ChangeNotifier {
   late final Player _player;
   Player get player => _player;
 
+  /// User's Settings → Display & Playback values. Read live (never
+  /// cached) so a change made in Settings applies to the very next
+  /// action, without reopening the video.
+  AppPrefs get prefs => _repo.prefs;
+  int get seekStepMs => _repo.prefs.defaultSeekJumpSec * 1000;
+
   /// OS/browser media-control bridge (Windows SMTC / Web Media Session
   /// API) — see services/media_session/media_session_service.dart.
   /// This is the primary path for earbud/hardware Play, Pause, Next
@@ -78,7 +85,7 @@ class PlaybackService extends ChangeNotifier {
           playPrevious();
           break;
         case MediaSessionAction.stop:
-          close();
+          stop();
           break;
         case MediaSessionAction.seekForward:
           seekRelative(10000);
@@ -106,7 +113,7 @@ class PlaybackService extends ChangeNotifier {
   bool isPlayerScreenVisible = false;
 
   /// Volume before muting, used for mute toggle.
-  double _volumeBeforeMute = 1.0;
+  double _volumeBeforeMute = 100.0;
 
   /// Whether currently muted - more reliable than checking volume.
   bool _isMuted = false;
@@ -138,7 +145,16 @@ class PlaybackService extends ChangeNotifier {
 
   /// Loads and plays [video], replacing the current queue with [siblings]
   /// (typically all videos in the same folder) so next/prev work.
-  Future<void> play(VideoEntity video, {List<VideoEntity>? siblings}) async {
+  Future<void> play(VideoEntity video, {List<VideoEntity>? siblings, VideoEntity? carryAutoPlayFrom}) async {
+    // Queue entries are snapshots taken when a list was loaded — always
+    // start from the freshest saved copy so speed/pitch/volume/trim edits
+    // made since then aren't lost.
+    video = await _repo.getById(video.id) ?? video;
+    if (carryAutoPlayFrom != null) {
+      // Auto-advancing keeps the chosen mode (Sequential / Random) going
+      // for the rest of the queue instead of stopping after one video.
+      video = video.copyWith(autoPlayNext: true, shufflePlaylist: carryAutoPlayFrom.shufflePlaylist);
+    }
     currentVideo = video;
     queue = siblings ?? [video];
     queueIndex = queue.indexWhere((v) => v.id == video.id);
@@ -147,7 +163,10 @@ class PlaybackService extends ChangeNotifier {
     await _player.open(Media(video.uriString), play: true);
     await _player.setRate(video.playbackSpeed);
     await _player.setPitch(_semitonesToRatio(video.pitchSemitones));
-    await _player.setVolume((video.volumeLevel * 100).clamp(0, 100));
+    final savedVolume = (video.volumeLevel * 100).clamp(0, 100).toDouble();
+    if (savedVolume > 0) _volumeBeforeMute = savedVolume;
+    // Mute is a session-level state: stays muted across tracks.
+    await _player.setVolume(_isMuted ? 0 : savedVolume);
     await applyVideoFilters(video);
     if (video.positionMs > 0 && video.positionMs < video.durationMs) {
       await _player.seek(Duration(milliseconds: video.positionMs));
@@ -159,7 +178,7 @@ class PlaybackService extends ChangeNotifier {
     notifyListeners();
   }
 
-  double _semitonesToRatio(int semitones) => pow(2, semitones / 12).toDouble();
+  double _semitonesToRatio(double semitones) => pow(2, semitones / 12).toDouble();
 
   /// Applies brightness/contrast/saturation/gamma/hue/sharpen via the
   /// libmpv `vf` chain — a real-time equivalent of the Android app's
@@ -207,6 +226,7 @@ class PlaybackService extends ChangeNotifier {
   }
 
   Future<void> togglePlayPause() async {
+    if (currentVideo == null) return;
     if (_player.state.playing) {
       await _player.pause();
     } else {
@@ -215,17 +235,65 @@ class PlaybackService extends ChangeNotifier {
     }
   }
 
+  /// Stop = pause + rewind to the start, but the video STAYS LOADED so
+  /// Play / Restart / Next / Previous / seeking all keep working. (This
+  /// used to call [close], which unloaded everything and left every
+  /// button on the Player screen dead.)
+  Future<void> stop() async {
+    final v = currentVideo;
+    if (v == null) return;
+    await _player.pause();
+    await _player.seek(Duration(milliseconds: trimStartMs));
+    await _repo.savePlaybackPosition(v.id, 0);
+    _stopTicker();
+    _mediaSession.updatePlaybackState(playing: false, position: Duration.zero, duration: _player.state.duration);
+    notifyListeners();
+  }
+
+  bool get isMuted => _isMuted;
+
+  Timer? _volumePersistTimer;
+
+  /// Sets the volume (0-100), un-mutes, and remembers it as this
+  /// video's saved level. Every volume control (slider, ± buttons,
+  /// keyboard, mini-player, earbud/media keys) goes through here so they
+  /// always agree with each other.
+  Future<void> setVolumePercent(double percent) async {
+    final p = percent.clamp(0, 100).toDouble();
+    _isMuted = false;
+    if (p > 0) _volumeBeforeMute = p;
+    await _player.setVolume(p);
+    final v = _currentVideo;
+    if (v != null) {
+      _currentVideo = v.copyWith(volumeLevel: p / 100);
+      // Debounced so dragging a slider doesn't hammer the database.
+      _volumePersistTimer?.cancel();
+      _volumePersistTimer = Timer(const Duration(milliseconds: 350), () {
+        final cur = _currentVideo;
+        if (cur != null) _repo.savePreferences(cur);
+      });
+    }
+    notifyListeners();
+  }
+
+  Future<void> adjustVolume(double deltaPercent) {
+    final base = _isMuted ? _volumeBeforeMute : _player.state.volume;
+    return setVolumePercent(base + deltaPercent);
+  }
+
   Future<void> toggleMute() async {
     if (!_isMuted) {
-      // Mute: save current volume and set to 0
-      _volumeBeforeMute = _player.state.volume;
+      final current = _player.state.volume;
+      if (current > 0) _volumeBeforeMute = current;
       await _player.setVolume(0);
       _isMuted = true;
     } else {
-      // Unmute: restore saved volume (0-100 scale)
-      await _player.setVolume(_volumeBeforeMute.clamp(0, 100));
+      // Restore exactly the level from before the mute (falls back to 50%
+      // only if that level was itself 0).
+      await _player.setVolume(_volumeBeforeMute > 0 ? _volumeBeforeMute : 50);
       _isMuted = false;
     }
+    notifyListeners();
   }
 
   Future<void> seekRelative(int deltaMs) async {
@@ -244,16 +312,20 @@ class PlaybackService extends ChangeNotifier {
     await _player.play();
   }
 
-  Future<void> playNext({bool shuffle = false}) async {
+  Future<void> playNext({bool shuffle = false, VideoEntity? carryFrom}) async {
     if (queue.isEmpty) return;
     int next;
     if (shuffle) {
-      next = Random().nextInt(queue.length);
+      if (queue.length < 2) return;
+      // Random, but never the video that just played.
+      do {
+        next = Random().nextInt(queue.length);
+      } while (next == queueIndex);
     } else {
       if (!hasNext) return;
       next = queueIndex + 1;
     }
-    await play(queue[next], siblings: queue);
+    await play(queue[next], siblings: queue, carryAutoPlayFrom: carryFrom);
   }
 
   Future<void> playPrevious() async {
@@ -270,7 +342,7 @@ class PlaybackService extends ChangeNotifier {
     if (v.loopPlayback) {
       restart();
     } else if (v.autoPlayNext) {
-      playNext(shuffle: v.shufflePlaylist);
+      playNext(shuffle: v.shufflePlaylist, carryFrom: v);
     }
   }
 
@@ -298,6 +370,7 @@ class PlaybackService extends ChangeNotifier {
   void dispose() {
     _ticker?.cancel();
     _saveTimer?.cancel();
+    _volumePersistTimer?.cancel();
     _mediaSessionSub?.cancel();
     _mediaSession.dispose();
     _player.dispose();

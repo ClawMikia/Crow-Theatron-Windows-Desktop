@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -17,7 +18,7 @@ class CrowDatabase {
   static final CrowDatabase instance = CrowDatabase._();
 
   static const dbName = 'crow_theatron.db';
-  static const dbVersion = 8;
+  static const dbVersion = 9;
 
   ffi.Database? _db;
 
@@ -50,6 +51,16 @@ class CrowDatabase {
           await db.execute(_createPlaylistVideos);
           await db.execute(_createSkips);
           await db.execute('CREATE INDEX idx_skips_video ON timeline_skips(video_id)');
+          await db.execute(_createThumbnails);
+        },
+        onUpgrade: (db, oldVersion, newVersion) async {
+          if (oldVersion < 9) {
+            // v9: persist the Sequential/Random choice + cache thumbnails.
+            try {
+              await db.execute('ALTER TABLE videos ADD COLUMN shuffle_playlist INTEGER NOT NULL DEFAULT 0');
+            } catch (_) {/* column already there */}
+            await db.execute(_createThumbnails);
+          }
         },
       ),
     );
@@ -73,6 +84,7 @@ class CrowDatabase {
       seek_jump_sec INTEGER NOT NULL DEFAULT 10,
       auto_play_next INTEGER NOT NULL DEFAULT 0,
       loop_playback INTEGER NOT NULL DEFAULT 0,
+      shuffle_playlist INTEGER NOT NULL DEFAULT 0,
       enhancement TEXT NOT NULL DEFAULT 'NONE',
       last_played_at INTEGER NOT NULL DEFAULT 0,
       playback_speed REAL NOT NULL DEFAULT 1.0,
@@ -92,6 +104,15 @@ class CrowDatabase {
       subtitle_bold INTEGER NOT NULL DEFAULT 0,
       subtitle_bg_alpha INTEGER NOT NULL DEFAULT 128,
       preferred_orientation INTEGER NOT NULL DEFAULT -1
+    )
+  ''';
+
+  /// Thumbnails live in their own table so `SELECT * FROM videos` list
+  /// queries never drag image blobs along with them.
+  static const _createThumbnails = '''
+    CREATE TABLE IF NOT EXISTS video_thumbnails (
+      video_id INTEGER PRIMARY KEY,
+      data BLOB NOT NULL
     )
   ''';
 
@@ -156,8 +177,10 @@ class CrowDatabase {
         'videos',
         {
           'title': e.title,
-          'folder_group': e.folderGroup,
-          'duration_ms': e.durationMs,
+          // folder_group is intentionally NOT overwritten: the user may have
+          // moved this video to another library folder, and re-importing
+          // must not undo that.
+          if (e.durationMs > 0) 'duration_ms': e.durationMs,
           'size_bytes': e.sizeBytes,
         },
         where: 'id = ?',
@@ -239,9 +262,98 @@ class CrowDatabase {
     return rows.map(VideoEntity.fromMap).toList();
   }
 
-  Future<void> deleteById(int id) async {
+  Future<void> deleteById(int id) => deleteByIds([id]);
+
+  /// Removes videos from the LIBRARY only (files on disk are never
+  /// touched), together with everything hanging off them.
+  Future<void> deleteByIds(List<int> ids) async {
+    if (ids.isEmpty) return;
     final db = await database;
-    await db.delete('videos', where: 'id = ?', whereArgs: [id]);
+    await db.transaction((txn) async {
+      for (final chunk in _chunks(ids)) {
+        final ph = List.filled(chunk.length, '?').join(',');
+        await txn.delete('videos', where: 'id IN ($ph)', whereArgs: chunk);
+        await txn.delete('chapter_markers', where: 'video_id IN ($ph)', whereArgs: chunk);
+        await txn.delete('timeline_skips', where: 'video_id IN ($ph)', whereArgs: chunk);
+        await txn.delete('playlist_videos', where: 'video_id IN ($ph)', whereArgs: chunk);
+        await txn.delete('video_thumbnails', where: 'video_id IN ($ph)', whereArgs: chunk);
+      }
+    });
+  }
+
+  Iterable<List<int>> _chunks(List<int> ids, [int size = 500]) sync* {
+    for (var i = 0; i < ids.length; i += size) {
+      yield ids.sublist(i, i + size > ids.length ? ids.length : i + size);
+    }
+  }
+
+  Future<List<int>> idsInFolder(String folder) async {
+    final db = await database;
+    final rows = await db.query('videos', columns: ['id'], where: 'folder_group = ?', whereArgs: [folder]);
+    return rows.map((r) => r['id'] as int).toList();
+  }
+
+  Future<List<String>> listFolders() async {
+    final db = await database;
+    final rows = await db.rawQuery('SELECT DISTINCT folder_group FROM videos ORDER BY folder_group COLLATE NOCASE ASC');
+    return rows.map((r) => r['folder_group'] as String).toList();
+  }
+
+  /// Library-only "move": just re-labels the videos' folder.
+  Future<void> moveToFolder(List<int> ids, String folder) async {
+    if (ids.isEmpty) return;
+    final db = await database;
+    await db.transaction((txn) async {
+      for (final chunk in _chunks(ids)) {
+        final ph = List.filled(chunk.length, '?').join(',');
+        await txn.update('videos', {'folder_group': folder}, where: 'id IN ($ph)', whereArgs: chunk);
+      }
+    });
+  }
+
+  Future<void> resetLibrary() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('videos');
+      await txn.delete('chapter_markers');
+      await txn.delete('timeline_skips');
+      await txn.delete('playlist_videos');
+      await txn.delete('video_thumbnails');
+    });
+  }
+
+  // ── Thumbnails ─────────────────────────────────────────────────────────
+
+  Future<Uint8List?> getThumbnail(int id) async {
+    final db = await database;
+    final rows = await db.query('video_thumbnails', columns: ['data'], where: 'video_id = ?', whereArgs: [id]);
+    if (rows.isEmpty) return null;
+    final v = rows.first['data'];
+    if (v is Uint8List) return v;
+    if (v is List<int>) return Uint8List.fromList(v);
+    return null;
+  }
+
+  Future<void> setThumbnail(int id, Uint8List bytes) async {
+    final db = await database;
+    await db.insert('video_thumbnails', {'video_id': id, 'data': bytes}, conflictAlgorithm: ffi.ConflictAlgorithm.replace);
+  }
+
+  /// (id, path) of every video that has no cached thumbnail yet.
+  Future<List<(int, String)>> listMissingThumbnails() async {
+    final db = await database;
+    final rows = await db.rawQuery('''
+      SELECT v.id AS id, v.uri AS uri FROM videos v
+      LEFT JOIN video_thumbnails t ON t.video_id = v.id
+      WHERE t.video_id IS NULL
+      ORDER BY v.id DESC
+    ''');
+    return rows.map((r) => (r['id'] as int, r['uri'] as String)).toList();
+  }
+
+  Future<void> updateDuration(int id, int durationMs) async {
+    final db = await database;
+    await db.update('videos', {'duration_ms': durationMs}, where: 'id = ? AND duration_ms = 0', whereArgs: [id]);
   }
 
   // ── Chapters ───────────────────────────────────────────────────────────
@@ -310,9 +422,27 @@ class CrowDatabase {
     await db.update('playlists', {'title': newTitle}, where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<void> addVideoToPlaylist(int playlistId, int videoId) async {
+  Future<void> addVideoToPlaylist(int playlistId, int videoId) => addVideosToPlaylist(playlistId, [videoId]);
+
+  /// Adds [videoIds] to a playlist, skipping ones already in it.
+  /// Returns how many were actually added.
+  Future<int> addVideosToPlaylist(int playlistId, List<int> videoIds) async {
     final db = await database;
-    await db.insert('playlist_videos', {'playlist_id': playlistId, 'video_id': videoId, 'position': 0});
+    var added = 0;
+    await db.transaction((txn) async {
+      final existing = (await txn.query('playlist_videos', columns: ['video_id'], where: 'playlist_id = ?', whereArgs: [playlistId]))
+          .map((r) => r['video_id'] as int)
+          .toSet();
+      final maxRow = await txn.rawQuery('SELECT MAX(position) AS m FROM playlist_videos WHERE playlist_id = ?', [playlistId]);
+      var pos = ((maxRow.first['m'] as int?) ?? -1) + 1;
+      for (final id in videoIds) {
+        if (existing.contains(id)) continue;
+        await txn.insert('playlist_videos', {'playlist_id': playlistId, 'video_id': id, 'position': pos++});
+        existing.add(id);
+        added++;
+      }
+    });
+    return added;
   }
 
   Future<void> removeVideoFromPlaylist(int playlistId, int videoId) async {

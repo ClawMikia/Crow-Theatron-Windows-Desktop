@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../data/crow_database.dart';
 import '../data/video_repository.dart';
 import '../models/video_entity.dart';
 import '../state/shell_nav.dart';
 import '../theme/crow_colors.dart';
+import '../util/video_open.dart';
 import '../widgets/section_header.dart';
 import '../widgets/video_tiles.dart';
 import 'folder_select_screen.dart';
-import 'player_screen.dart';
 
 /// Port of `activity_main.xml` + `main/MainActivity.kt`, restructured
 /// as a desktop dashboard: quick actions + horizontal shelves for
@@ -26,16 +25,15 @@ class _MainScreenState extends State<MainScreen> {
   List<VideoEntity> _continueWatching = [];
   List<VideoEntity> _favorites = [];
   bool _loaded = false;
-  late VideoRepository _repo;
+  late final VideoRepository _repo;
+  int _loadToken = 0;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _repo = repoOf(context);
-      _load();
-      _repo.addListener(_onRepoChanged);
-    });
+    _repo = context.read<VideoRepository>();
+    _repo.addListener(_onRepoChanged);
+    _load();
   }
 
   @override
@@ -49,9 +47,10 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _load() async {
+    final token = ++_loadToken;
     final cw = await _repo.listContinueWatching();
     final favs = await _repo.listFavorites();
-    if (mounted) setState(() { _continueWatching = cw; _favorites = favs; _loaded = true; });
+    if (mounted && token == _loadToken) setState(() { _continueWatching = cw; _favorites = favs; _loaded = true; });
   }
 
   Future<void> _resetLibrary() async {
@@ -72,9 +71,9 @@ class _MainScreenState extends State<MainScreen> {
       ),
     );
     if (confirmed != true) return;
-    final db = await CrowDatabase.instance.database;
-    await db.delete('videos');
-    await db.delete('chapter_markers');
+    // Goes through the repository so every open screen reloads (and
+    // playlist entries / skips / thumbnails are cleaned up too).
+    await _repo.resetLibrary();
     if (mounted) {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const FolderSelectScreen()));
     }
@@ -159,9 +158,7 @@ class _Shelf extends StatelessWidget {
               width: 190,
               child: VideoGridCard(
                 video: videos[i],
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => PlayerScreen(videoId: videos[i].id, siblingQueue: videos)),
-                ),
+                onTap: () => openVideoPlayer(context, videos[i], videos),
               ),
             ),
           ),
