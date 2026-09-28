@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../data/app_prefs.dart';
 import '../models/enhancement_mode.dart';
 import '../theme/crow_colors.dart';
+import '../widgets/keyboard_accessible.dart';
 import '../widgets/section_header.dart';
 
 /// Port of `activity_video_enhancement.xml` + `enhancement/VideoEnhancementActivity.kt`
@@ -42,8 +43,9 @@ class _EnhancementScreenState extends State<EnhancementScreen> {
                   borderRadius: BorderRadius.circular(12),
                   side: BorderSide(color: selected ? CrowColors.accentPurple : CrowColors.divider, width: selected ? 1.6 : 1),
                 ),
-                child: InkWell(
+                child: FocusableInkWell(
                   borderRadius: BorderRadius.circular(12),
+                  semanticsLabel: 'Set default enhancement to ${mode.displayName}',
                   onTap: () {
                     prefs.defaultEnhancement = mode;
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Default set to ${mode.displayName}')));

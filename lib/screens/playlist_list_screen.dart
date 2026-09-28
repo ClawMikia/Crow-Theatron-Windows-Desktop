@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../data/video_repository.dart';
 import '../models/playlist.dart';
 import '../theme/crow_colors.dart';
+import '../widgets/keyboard_accessible.dart';
 import '../widgets/section_header.dart';
 import 'library_screen.dart';
 
@@ -138,8 +139,9 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                     final p = _playlists[i];
                     return Card(
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: CrowColors.divider)),
-                      child: InkWell(
+                      child: FocusableInkWell(
                         borderRadius: BorderRadius.circular(12),
+                        semanticsLabel: 'Open playlist ${p.title}',
                         onTap: () => Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (_) => LibraryScreen(mode: LibraryMode.playlist, playlistId: p.id, playlistName: p.title, standalone: true),

@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart';
 
 import '../data/video_repository.dart';
 import '../models/video_entity.dart';
+import 'media_session/media_session_service.dart';
 
 /// Global playback engine + state holder. Port of the combined
 /// responsibilities of `service/PlaybackService.kt` and
@@ -23,6 +24,11 @@ class PlaybackService extends ChangeNotifier {
     );
     _player.stream.playing.listen((playing) {
       notifyListeners();
+      _mediaSession.updatePlaybackState(
+        playing: playing,
+        position: _player.state.position,
+        duration: _player.state.duration,
+      );
       if (playing) {
         _startTicker();
       } else {
@@ -32,12 +38,57 @@ class PlaybackService extends ChangeNotifier {
     _player.stream.completed.listen((completed) {
       if (completed) _onCompleted();
     });
-    _player.stream.position.listen((_) => notifyListeners());
+    _player.stream.position.listen((position) {
+      notifyListeners();
+      _mediaSession.updatePlaybackState(
+        playing: _player.state.playing,
+        position: position,
+        duration: _player.state.duration,
+      );
+    });
+    _initMediaSession();
   }
 
   final VideoRepository _repo;
   late final Player _player;
   Player get player => _player;
+
+  /// OS/browser media-control bridge (Windows SMTC / Web Media Session
+  /// API) — see services/media_session/media_session_service.dart.
+  /// This is the primary path for earbud/hardware Play, Pause, Next
+  /// and Previous button presses; `LogicalKeyboardKey.media*` bindings
+  /// in shortcuts/app_shortcuts.dart are the fallback for platforms/
+  /// situations where the OS instead delivers those as ordinary key
+  /// events.
+  final MediaSessionService _mediaSession = MediaSessionService();
+  StreamSubscription<MediaSessionAction>? _mediaSessionSub;
+
+  Future<void> _initMediaSession() async {
+    await _mediaSession.initialize();
+    _mediaSessionSub = _mediaSession.actions.listen((action) {
+      switch (action) {
+        case MediaSessionAction.play:
+        case MediaSessionAction.pause:
+          togglePlayPause();
+          break;
+        case MediaSessionAction.next:
+          playNext();
+          break;
+        case MediaSessionAction.previous:
+          playPrevious();
+          break;
+        case MediaSessionAction.stop:
+          close();
+          break;
+        case MediaSessionAction.seekForward:
+          seekRelative(10000);
+          break;
+        case MediaSessionAction.seekBackward:
+          seekRelative(-10000);
+          break;
+      }
+    });
+  }
 
   VideoEntity? _currentVideo;
   VideoEntity? get currentVideo => _currentVideo;
@@ -103,6 +154,7 @@ class PlaybackService extends ChangeNotifier {
     } else if (video.trimStartMs > 0) {
       await _player.seek(Duration(milliseconds: video.trimStartMs));
     }
+    _mediaSession.updateMetadata(title: video.title, album: video.folderGroup);
     _startSaveTimer();
     notifyListeners();
   }
@@ -233,6 +285,7 @@ class PlaybackService extends ChangeNotifier {
     queueIndex = -1;
     _stopTicker();
     _saveTimer?.cancel();
+    _mediaSession.updatePlaybackState(playing: false, position: Duration.zero, duration: Duration.zero);
     notifyListeners();
   }
 
@@ -245,6 +298,8 @@ class PlaybackService extends ChangeNotifier {
   void dispose() {
     _ticker?.cancel();
     _saveTimer?.cancel();
+    _mediaSessionSub?.cancel();
+    _mediaSession.dispose();
     _player.dispose();
     super.dispose();
   }

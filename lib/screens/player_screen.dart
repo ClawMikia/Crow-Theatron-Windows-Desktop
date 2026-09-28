@@ -10,201 +10,13 @@ import '../models/enhancement_mode.dart';
 import '../models/timeline_skip.dart';
 import '../models/video_entity.dart';
 import '../services/playback_service.dart';
+import '../shortcuts/app_shortcuts.dart';
 import '../theme/crow_colors.dart';
 import '../util/format_utils.dart';
 import '../widgets/crow_title_bar.dart';
 import '../widgets/player_dialogs.dart';
 import 'main_screen.dart';
 import '../widgets/keyboard_accessible.dart';
-
-/// Standard video player keyboard shortcuts (matching YouTube, VLC, MPV, etc.)
-class _VideoPlayerShortcuts {
-  static const Duration _seekShort = Duration(seconds: 5);
-  static const Duration _seekMedium = Duration(seconds: 10);
-  static const Duration _seekLong = Duration(seconds: 30);
-  static const Duration _seekFrame =
-      Duration(milliseconds: 100); // ~1 frame at 30fps
-  static const double _volumeStep = 5.0;
-  static const double _speedStep = 0.25;
-
-  static KeyEventResult handleKeyEvent(
-    KeyEvent event,
-    PlaybackService svc,
-    VideoEntity video, {
-    required VoidCallback onFullscreen,
-    required VoidCallback onAddChapter,
-    required VoidCallback onAddSkip,
-    required VoidCallback onNextChapter,
-    required VoidCallback onPreviousChapter,
-    required VoidCallback onExit,
-  }) {
-    if (event is! KeyDownEvent) return KeyEventResult.ignored;
-
-    final logicalKey = event.logicalKey;
-    final isShift = HardwareKeyboard.instance.isShiftPressed;
-    final isControl = HardwareKeyboard.instance.isControlPressed;
-    final isAlt = HardwareKeyboard.instance.isAltPressed;
-
-    // Handle number keys 0-9 for seeking to percentage
-    if (_isDigitKey(logicalKey)) {
-      final digit = _digitKeyToInt(logicalKey);
-      if (digit != null) {
-        final percent = digit * 10;
-        final duration = svc.player.state.duration.inMilliseconds;
-        if (duration > 0) {
-          svc.seekTo((duration * percent / 100).round());
-        }
-      }
-      return KeyEventResult.handled;
-    }
-
-    switch (logicalKey) {
-      // Play/Pause - Space or K
-      case LogicalKeyboardKey.space:
-      case LogicalKeyboardKey.keyK:
-        svc.togglePlayPause();
-        return KeyEventResult.handled;
-
-      // Fullscreen - F
-      case LogicalKeyboardKey.keyF:
-        onFullscreen();
-        return KeyEventResult.handled;
-
-      // Mute - M
-      case LogicalKeyboardKey.keyM:
-        svc.toggleMute();
-        return KeyEventResult.handled;
-
-      // Seek backward/forward - Arrow keys
-      case LogicalKeyboardKey.arrowLeft:
-        if (isControl) {
-          svc.seekRelative(-_seekLong.inMilliseconds); // Ctrl+←: -30s
-        } else if (isShift) {
-          svc.seekRelative(-_seekFrame.inMilliseconds); // Shift+←: -1 frame
-        } else if (isAlt) {
-          svc.seekRelative(-_seekShort.inMilliseconds); // Alt+←: -5s
-        } else {
-          svc.seekRelative(-_seekMedium.inMilliseconds); // ←: -10s
-        }
-        return KeyEventResult.handled;
-
-      case LogicalKeyboardKey.arrowRight:
-        if (isControl) {
-          svc.seekRelative(_seekLong.inMilliseconds); // Ctrl+→: +30s
-        } else if (isShift) {
-          svc.seekRelative(_seekFrame.inMilliseconds); // Shift+→: +1 frame
-        } else if (isAlt) {
-          svc.seekRelative(_seekShort.inMilliseconds); // Alt+→: +5s
-        } else {
-          svc.seekRelative(_seekMedium.inMilliseconds); // →: +10s
-        }
-        return KeyEventResult.handled;
-
-      // J/L for 10s seek (YouTube style)
-      case LogicalKeyboardKey.keyJ:
-        svc.seekRelative(-_seekMedium.inMilliseconds);
-        return KeyEventResult.handled;
-
-      case LogicalKeyboardKey.keyL:
-        svc.seekRelative(_seekMedium.inMilliseconds);
-        return KeyEventResult.handled;
-
-      // Volume - Arrow Up/Down
-      case LogicalKeyboardKey.arrowUp:
-        svc.player
-            .setVolume((svc.player.state.volume + _volumeStep).clamp(0, 100));
-        return KeyEventResult.handled;
-
-      case LogicalKeyboardKey.arrowDown:
-        svc.player
-            .setVolume((svc.player.state.volume - _volumeStep).clamp(0, 100));
-        return KeyEventResult.handled;
-
-      // Home/End - Beginning/End
-      case LogicalKeyboardKey.home:
-        svc.seekTo(0);
-        return KeyEventResult.handled;
-
-      case LogicalKeyboardKey.end:
-        final dur = svc.player.state.duration.inMilliseconds;
-        if (dur > 0) svc.seekTo(dur);
-        return KeyEventResult.handled;
-
-      // Speed control - >/< or ./,
-      case LogicalKeyboardKey.period:
-      case LogicalKeyboardKey.keyE: // E for faster
-        if (isShift) {
-          _adjustSpeed(svc, video, _speedStep);
-        }
-        return KeyEventResult.handled;
-
-      case LogicalKeyboardKey.comma:
-      case LogicalKeyboardKey.keyW: // W for slower
-        if (isShift) {
-          _adjustSpeed(svc, video, -_speedStep);
-        }
-        return KeyEventResult.handled;
-
-      // Reset speed - Ctrl+R
-      case LogicalKeyboardKey.keyR:
-        if (isControl) {
-          svc.player.setRate(1.0);
-        }
-        return KeyEventResult.handled;
-
-      // Next/Previous track - Shift+N / Shift+P
-      case LogicalKeyboardKey.keyN:
-        if (isShift) {
-          svc.playNext();
-        } else {
-          onNextChapter();
-        }
-        return KeyEventResult.handled;
-
-      case LogicalKeyboardKey.keyP:
-        if (isShift) {
-          svc.playPrevious();
-        } else {
-          onPreviousChapter();
-        }
-        return KeyEventResult.handled;
-
-      // Add chapter - C
-      case LogicalKeyboardKey.keyC:
-        onAddChapter();
-        return KeyEventResult.handled;
-
-      // Add skip - Ctrl+K
-      case LogicalKeyboardKey.keyK:
-        if (isControl) onAddSkip();
-        return KeyEventResult.handled;
-
-      // Escape - exit fullscreen or close
-      case LogicalKeyboardKey.escape:
-        onExit();
-        return KeyEventResult.handled;
-
-      default:
-        return KeyEventResult.ignored;
-    }
-  }
-
-  static bool _isDigitKey(LogicalKeyboardKey key) {
-    return key.keyId >= LogicalKeyboardKey.digit0.keyId &&
-        key.keyId <= LogicalKeyboardKey.digit9.keyId;
-  }
-
-  static int? _digitKeyToInt(LogicalKeyboardKey key) {
-    if (!_isDigitKey(key)) return null;
-    return key.keyId - LogicalKeyboardKey.digit0.keyId;
-  }
-
-  static void _adjustSpeed(
-      PlaybackService svc, VideoEntity video, double delta) {
-    final newSpeed = (video.playbackSpeed + delta).clamp(0.25, 4.0);
-    svc.player.setRate(newSpeed);
-  }
-}
 
 /// Port of `player/PlayerActivity.kt` + `activity_player.xml` — the full
 /// per-video control surface: transport, volume/pitch/speed, trim,
@@ -315,8 +127,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
             child: CircularProgressIndicator(color: CrowColors.accentYellow)),
       );
     }
-    return CallbackShortcuts(
-      bindings: _playerShortcuts(video),
+    final svc = _svc;
+    final shortcuts = svc == null
+        ? const <AppShortcut>[]
+        : [
+            ...buildTransportShortcuts(svc),
+            ...buildPlayerOnlyShortcuts(
+              _playerShortcutCallbacks(video),
+              onShowHelp: () => showShortcutsHelp(context, [
+                ...buildTransportShortcuts(svc),
+                ...buildPlayerOnlyShortcuts(_playerShortcutCallbacks(video), onShowHelp: () {}),
+              ]),
+            ),
+          ];
+
+    return AppShortcutsScope(
+      shortcuts: shortcuts,
       child: Scaffold(
         backgroundColor: CrowColors.bg,
         body: Column(
@@ -337,108 +163,63 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  Map<ShortcutActivator, VoidCallback> _playerShortcuts(VideoEntity video) {
-    final shortcuts = <ShortcutActivator, VoidCallback>{};
-
-    void bind(LogicalKeyboardKey key, VoidCallback action,
-        {bool shift = false}) {
-      shortcuts[SingleActivator(key, control: true, alt: true, shift: shift)] =
-          action;
-    }
-
-    void bindShift(LogicalKeyboardKey key, VoidCallback action) {
-      shortcuts[SingleActivator(key, control: true, shift: true)] = action;
-    }
-
-    bind(LogicalKeyboardKey.keyB, () => Navigator.of(context).maybePop());
-    bind(LogicalKeyboardKey.keyC, _addChapterAtCurrentPosition);
-    bind(LogicalKeyboardKey.keyF,
-        () => setState(() => _fullscreen = !_fullscreen));
-    bind(LogicalKeyboardKey.keyR, () => _svc?.restart());
-    bind(LogicalKeyboardKey.keyP, () => _svc?.playPrevious());
-    bind(LogicalKeyboardKey.keyN, () => _svc?.playNext());
-    bind(LogicalKeyboardKey.keyW,
-        () => _svc?.seekRelative(-video.seekJumpSec * 1000));
-    bind(LogicalKeyboardKey.keyE,
-        () => _svc?.seekRelative(video.seekJumpSec * 1000));
-    bind(LogicalKeyboardKey.keyX, () => _svc?.close());
-
-    bind(LogicalKeyboardKey.keyV,
-        () => _setVolume(video, video.volumeLevel * 100));
-    bind(LogicalKeyboardKey.minus, () => _adjustVolume(video, -5));
-    bind(LogicalKeyboardKey.keyM, () => _setVolume(video, 0));
-    bind(LogicalKeyboardKey.equal, () => _adjustVolume(video, 5));
-    bind(LogicalKeyboardKey.keyD, () => _setVolume(video, 100));
-
-    bind(LogicalKeyboardKey.keyA, () => _adjustPitch(video, -1));
-    bind(LogicalKeyboardKey.keyS, () => _adjustPitch(video, 1));
-    bind(LogicalKeyboardKey.keyZ, () => _setPitch(video, 0));
-    bind(LogicalKeyboardKey.keyT, () => _adjustSpeed(video, -0.1));
-    bind(LogicalKeyboardKey.keyY, () => _adjustSpeed(video, 0.1));
-    bind(LogicalKeyboardKey.keyU, () => _setSpeed(video, 1.0));
-    bind(LogicalKeyboardKey.keyI,
-        () => _saveVideo(video.copyWith(trimStartMs: 0, trimEndMs: 0)));
-    bind(LogicalKeyboardKey.keyK, _manageSkips);
-    bind(LogicalKeyboardKey.keyL, _addChapterAtCurrentPosition);
-    bind(LogicalKeyboardKey.keyG,
-        () => _saveVideo(video.copyWith(autoPlayNext: !video.autoPlayNext)));
-    bind(LogicalKeyboardKey.keyH,
-        () => _saveVideo(video.copyWith(loopPlayback: !video.loopPlayback)));
-    bind(
-        LogicalKeyboardKey.keyJ,
-        () => _saveVideo(
-            video.copyWith(shufflePlaylist: !video.shufflePlaylist)));
-    bind(LogicalKeyboardKey.keyQ, () async {
-      final pos = _svc?.player.state.position.inMilliseconds ?? 0;
-      final result = await showAddSkipDialog(context,
-          initialStartMs: pos, initialEndMs: pos + 10000);
-      if (result == null) return;
-      await repoOf(context)
-          .addSkip(widget.videoId, result.$1, result.$2, label: result.$3);
-      _reloadChaptersAndSkips();
-    });
-    bind(LogicalKeyboardKey.keyO, () async {
-      await repoOf(context).setFavorite(video.id, !video.favorite);
-      _saveVideo(video.copyWith(favorite: !video.favorite));
-    });
-    bind(LogicalKeyboardKey.keyR, () => _resetVideo(video), shift: true);
-    bindShift(LogicalKeyboardKey.keyV, () => _setVolume(video, 50));
-    bindShift(LogicalKeyboardKey.keyP, () => _setPitch(video, 0));
-    bindShift(LogicalKeyboardKey.keyS, () => _setSpeed(video, 1.0));
-    bindShift(LogicalKeyboardKey.keyT,
-        () => _saveVideo(video.copyWith(trimStartMs: 0)));
-    bindShift(LogicalKeyboardKey.keyE,
-        () => _saveVideo(video.copyWith(trimEndMs: 0)));
-    bindShift(LogicalKeyboardKey.keyA, () => _openEnhancementMenu(video));
-    bindShift(LogicalKeyboardKey.keyD, _manageSkips);
-    bindShift(LogicalKeyboardKey.keyG,
-        () => _saveVideo(video.copyWith(shufflePlaylist: false)));
-    bindShift(LogicalKeyboardKey.keyH,
-        () => _saveVideo(video.copyWith(shufflePlaylist: true)));
-    bindShift(LogicalKeyboardKey.keyO,
-        () => _saveVideo(video.copyWith(autoPlayNext: true)));
-    bindShift(LogicalKeyboardKey.keyL,
-        () => _saveVideo(video.copyWith(loopPlayback: false)));
-    bindShift(LogicalKeyboardKey.keyM,
-        () => _saveVideo(video.copyWith(loopPlayback: true)));
-
-    return shortcuts;
+  /// Bundles this screen's helper methods into the shared
+  /// [PlayerShortcutCallbacks] bag consumed by
+  /// `shortcuts/app_shortcuts.dart`'s `buildPlayerOnlyShortcuts`. Kept
+  /// as the single place that wires "what a key does" to "how the
+  /// player actually does it".
+  PlayerShortcutCallbacks _playerShortcutCallbacks(VideoEntity video) {
+    return PlayerShortcutCallbacks(
+      toggleFullscreen: () => setState(() => _fullscreen = !_fullscreen),
+      exitOrBack: () {
+        if (_fullscreen) {
+          setState(() => _fullscreen = false);
+        } else {
+          Navigator.of(context).maybePop();
+        }
+      },
+      restart: () => _svc?.restart(),
+      addChapterAtCurrentPosition: _addChapterAtCurrentPosition,
+      openAddSkipDialog: _openAddSkipDialogAtCurrentPosition,
+      manageSkips: _manageSkips,
+      nextChapter: _seekToNextChapter,
+      previousChapter: _seekToPreviousChapter,
+      seekToPercent: (percent) {
+        final dur = _svc?.player.state.duration.inMilliseconds ?? 0;
+        if (dur > 0) _svc?.seekTo((dur * percent / 100).round());
+      },
+      seekToStart: () => _svc?.seekTo(0),
+      seekToEnd: () {
+        final dur = _svc?.player.state.duration.inMilliseconds ?? 0;
+        if (dur > 0) _svc?.seekTo(dur);
+      },
+      pitchDown: () => _adjustPitch(video, -1),
+      pitchUp: () => _adjustPitch(video, 1),
+      resetPitch: () => _setPitch(video, 0),
+      speedDown: () => _adjustSpeed(video, -0.1),
+      speedUp: () => _adjustSpeed(video, 0.1),
+      resetSpeed: () => _setSpeed(video, 1.0),
+      toggleAutoplay: () =>
+          _saveVideo(video.copyWith(autoPlayNext: !video.autoPlayNext)),
+      toggleLoop: () =>
+          _saveVideo(video.copyWith(loopPlayback: !video.loopPlayback)),
+      toggleShuffle: () => _saveVideo(
+          video.copyWith(shufflePlaylist: !video.shufflePlaylist)),
+      toggleFavorite: () async {
+        await repoOf(context).setFavorite(video.id, !video.favorite);
+        _saveVideo(video.copyWith(favorite: !video.favorite));
+      },
+    );
   }
 
-  Future<void> _resetVideo(VideoEntity video) => _saveVideo(VideoEntity(
-        id: video.id,
-        uriString: video.uriString,
-        sourceUriString: video.sourceUriString,
-        title: video.title,
-        folderGroup: video.folderGroup,
-        durationMs: video.durationMs,
-        sizeBytes: video.sizeBytes,
-      ));
-
-  void _openEnhancementMenu(VideoEntity video) {
-    final nextIndex = (EnhancementMode.values.indexOf(video.enhancement) + 1) %
-        EnhancementMode.values.length;
-    _saveVideo(video.copyWith(enhancement: EnhancementMode.values[nextIndex]));
+  Future<void> _openAddSkipDialogAtCurrentPosition() async {
+    final pos = _svc?.player.state.position.inMilliseconds ?? 0;
+    final result = await showAddSkipDialog(context,
+        initialStartMs: pos, initialEndMs: pos + 10000);
+    if (result == null) return;
+    await repoOf(context)
+        .addSkip(widget.videoId, result.$1, result.$2, label: result.$3);
+    _reloadChaptersAndSkips();
   }
 
   /// Fixed-width scrollable control panel beside the video — desktop
@@ -492,35 +273,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // ── Video surface + overlay ──────────────────────────────────────────
 
   Widget _buildVideoSurface(VideoEntity video) {
-    final svc = context.watch<PlaybackService>();
-
+    // Every keyboard shortcut for this screen is bound once, at the
+    // Scaffold root, via AppShortcutsScope in build() (see
+    // shortcuts/app_shortcuts.dart) — this Focus node just gives the
+    // video surface a sensible default focus target (for mouse-click
+    // focusing and so the shortcuts above have *something* focused to
+    // bubble key events up from) without handling keys itself.
     return FocusScope(
       autofocus: true,
       child: Focus(
         focusNode: _playerFocusNode,
         autofocus: true,
-        onKeyEvent: (node, event) {
-          return _VideoPlayerShortcuts.handleKeyEvent(
-            event,
-            svc,
-            video,
-            onFullscreen: () => setState(() => _fullscreen = !_fullscreen),
-            onAddChapter: _addChapterAtCurrentPosition,
-            onAddSkip: () async {
-              final pos = svc.player.state.position.inMilliseconds;
-              final result = await showAddSkipDialog(context,
-                  initialStartMs: pos, initialEndMs: pos + 10000);
-              if (result == null) return;
-              await repoOf(context).addSkip(
-                  widget.videoId, result.$1, result.$2,
-                  label: result.$3);
-              _reloadChaptersAndSkips();
-            },
-            onNextChapter: _seekToNextChapter,
-            onPreviousChapter: _seekToPreviousChapter,
-            onExit: () => Navigator.of(context).maybePop(),
-          );
-        },
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -999,9 +762,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   subtitle: Text(
                       '${FormatUtils.formatDuration(s.startMs)} \u2013 ${FormatUtils.formatDuration(s.endMs)}',
                       style: const TextStyle(color: CrowColors.onMuted)),
-                  trailing: IconButton(
+                  trailing: FocusableIconButton(
                     icon: const Icon(Icons.delete_outline_rounded,
                         color: CrowColors.accentRed),
+                    tooltip: 'Delete skip',
+                    semanticsLabel: 'Delete skip ${s.label}',
                     onPressed: () async {
                       await repoOf(context).deleteSkip(s.id);
                       Navigator.pop(ctx);

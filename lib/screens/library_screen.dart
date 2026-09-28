@@ -153,9 +153,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final header = SectionHeader(
       title: _title,
       actions: [
-        IconButton(
+        FocusableIconButton(
           icon: Icon(_grid ? Icons.view_list_rounded : Icons.grid_view_rounded, color: CrowColors.onBg),
           tooltip: 'Toggle view',
+          semanticsLabel: 'Toggle grid or list view',
           onPressed: () => setState(() => _grid = !_grid),
         ),
       ],

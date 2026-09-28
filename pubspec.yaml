@@ -4,7 +4,7 @@ publish_to: "none"
 version: 2.0.0
 
 environment:
-  sdk: ">=3.3.0 <4.0.0"
+  sdk: ">=3.4.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -37,6 +37,13 @@ dependencies:
 
   # ── State management (kept intentionally lightweight, like the Android app) ──
   provider: ^6.1.2
+
+  # ── Earbud / hardware media-key + OS lock-screen transport controls ──
+  # Windows: System Media Transport Controls. Needs `rustup` installed
+  # on the build machine — see README "Media keys / earbud support".
+  smtc_windows: ^1.1.0
+  # Web: typed bindings for navigator.mediaSession (Media Session API).
+  web: ^1.1.0
 
 dev_dependencies:
   flutter_test:

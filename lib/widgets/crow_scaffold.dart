@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/crow_colors.dart';
 import 'crow_title_bar.dart';
+import 'keyboard_accessible.dart';
 import 'mini_player.dart';
 
 /// Chrome for screens pushed *on top of* [AppShell] as a standalone
@@ -66,9 +67,11 @@ class CrowToolbar extends StatelessWidget implements PreferredSizeWidget {
       child: Row(
         children: [
           if (showBack)
-            IconButton(
+            FocusableIconButton(
               icon: const Icon(Icons.arrow_back_rounded, color: CrowColors.onBg),
               onPressed: () => Navigator.of(context).maybePop(),
+              tooltip: 'Back',
+              semanticsLabel: 'Back',
             )
           else
             const SizedBox(width: 12),

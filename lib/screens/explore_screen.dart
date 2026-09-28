@@ -4,6 +4,7 @@ import '../models/video_entity.dart';
 import '../theme/crow_colors.dart';
 import '../widgets/section_header.dart';
 import '../widgets/video_tiles.dart';
+import '../widgets/keyboard_accessible.dart';
 import 'main_screen.dart';
 import 'player_screen.dart';
 
@@ -60,9 +61,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
           title: 'Explore',
           subtitle: 'Search your library by filename',
           actions: [
-            IconButton(
+            FocusableIconButton(
               icon: Icon(_grid ? Icons.view_list_rounded : Icons.grid_view_rounded, color: CrowColors.onBg),
               onPressed: () => setState(() => _grid = !_grid),
+              tooltip: 'Toggle view',
+              semanticsLabel: 'Toggle grid or list view',
             ),
           ],
         ),

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import '../theme/crow_colors.dart';
+import 'keyboard_accessible.dart';
 
 /// Frameless-window title bar: app icon (also used as the taskbar/title
 /// bar icon via windows/runner/Runner.rc) + app name on the left, and
@@ -71,11 +72,13 @@ class _CrowTitleBarState extends State<CrowTitleBar> with WindowListener {
           ),
           _TitleBarButton(
             icon: Icons.remove,
+            semanticsLabel: 'Minimize window',
             onTap: () => windowManager.minimize(),
           ),
           _TitleBarButton(
             icon: _isMaximized ? Icons.filter_none : Icons.crop_square,
             iconSize: _isMaximized ? 13 : 14,
+            semanticsLabel: _isMaximized ? 'Restore window' : 'Maximize window',
             onTap: () async {
               if (await windowManager.isMaximized()) {
                 windowManager.unmaximize();
@@ -87,6 +90,7 @@ class _CrowTitleBarState extends State<CrowTitleBar> with WindowListener {
           _TitleBarButton(
             icon: Icons.close,
             hoverColor: CrowColors.accentRed,
+            semanticsLabel: 'Close window',
             onTap: () => windowManager.close(),
           ),
         ],
@@ -95,40 +99,31 @@ class _CrowTitleBarState extends State<CrowTitleBar> with WindowListener {
   }
 }
 
-class _TitleBarButton extends StatefulWidget {
+class _TitleBarButton extends StatelessWidget {
   const _TitleBarButton({
     required this.icon,
     required this.onTap,
     this.hoverColor,
     this.iconSize = 14,
+    this.semanticsLabel,
   });
 
   final IconData icon;
   final VoidCallback onTap;
   final Color? hoverColor;
   final double iconSize;
-
-  @override
-  State<_TitleBarButton> createState() => _TitleBarButtonState();
-}
-
-class _TitleBarButtonState extends State<_TitleBarButton> {
-  bool _hover = false;
+  final String? semanticsLabel;
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: Container(
-          width: 46,
-          height: 32,
-          color: _hover ? (widget.hoverColor ?? CrowColors.surfaceElevated) : Colors.transparent,
-          alignment: Alignment.center,
-          child: Icon(widget.icon, size: widget.iconSize, color: CrowColors.onBg),
-        ),
+    return FocusableInkWell(
+      onTap: onTap,
+      semanticsLabel: semanticsLabel,
+      hoverColor: hoverColor ?? CrowColors.surfaceElevated,
+      child: SizedBox(
+        width: 46,
+        height: 32,
+        child: Icon(icon, size: iconSize, color: CrowColors.onBg),
       ),
     );
   }

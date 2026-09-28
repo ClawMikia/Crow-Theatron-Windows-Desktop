@@ -28,6 +28,16 @@ Future<void> main() async {
       title: 'Crow Théatron',
     );
     windowManager.waitUntilReadyToShow(windowOptions, () async {
+      // Explicit, even though window_manager already defaults to a
+      // resizable window: makes the "the window can be dragged bigger
+      // /smaller while not maximized" behavior a deliberate, documented
+      // choice rather than an assumption. minimumSize above still
+      // applies; no maximumSize is set, so there's no upper bound.
+      await windowManager.setResizable(true);
+      // Open maximized by default. Maximizing before show() (rather
+      // than after) avoids a visible "small window snaps to full
+      // screen" flash on launch.
+      await windowManager.maximize();
       await windowManager.show();
       await windowManager.focus();
     });
