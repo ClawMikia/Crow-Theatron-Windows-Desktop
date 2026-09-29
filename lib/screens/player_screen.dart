@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -39,6 +40,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   List<ChapterMarker> _chapters = [];
   List<TimelineSkip> _skips = [];
   bool _fullscreen = false;
+  bool _controlsVisible = true;
+  Timer? _hideTimer;
   late VideoController _controller;
   PlaybackService? _svc;
   VideoRepository? _repo;
@@ -115,9 +118,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void dispose() {
     _repo?.removeListener(_onRepoChanged);
     _svc?.removeListener(_onPlaybackServiceChanged);
+    _hideTimer?.cancel();
     _playerFocusNode.dispose();
     _svc?.setPlayerScreenVisible(false);
     super.dispose();
+  }
+
+  void _showControlsTemporarily() {
+    if (!_controlsVisible) setState(() => _controlsVisible = true);
+    _hideTimer?.cancel();
+    _hideTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted && _fullscreen) {
+        setState(() => _controlsVisible = false);
+      }
+    });
   }
 
   Future<void> _saveVideo(VideoEntity updated) async {
@@ -189,7 +203,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// player actually does it".
   PlayerShortcutCallbacks _playerShortcutCallbacks(VideoEntity video) {
     return PlayerShortcutCallbacks(
-      toggleFullscreen: () => setState(() => _fullscreen = !_fullscreen),
+      toggleFullscreen: () {
+        setState(() {
+          _fullscreen = !_fullscreen;
+          if (_fullscreen) {
+            _controlsVisible = true;
+            _showControlsTemporarily();
+          } else {
+            _controlsVisible = true;
+            _hideTimer?.cancel();
+          }
+        });
+      },
       exitOrBack: () {
         if (_fullscreen) {
           setState(() => _fullscreen = false);
@@ -303,62 +328,79 @@ class _PlayerScreenState extends State<PlayerScreen> {
       child: Focus(
         focusNode: _playerFocusNode,
         autofocus: true,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            ColoredBox(
-              color: CrowColors.pureBlack,
-              child: Video(
-                  controller: _controller,
-                  fit: video.cropMode.boxFit,
-                  controls: NoVideoControls),
-            ),
-            Positioned(
-              top: 8,
-              left: 8,
-              right: 8,
-              child: Row(
+        child: Listener(
+          onPointerMove: (_) {
+            if (_fullscreen) _showControlsTemporarily();
+          },
+          child: MouseRegion(
+            onHover: (_) {
+              if (_fullscreen) _showControlsTemporarily();
+            },
+            child: GestureDetector(
+              onTapDown: (_) {
+                if (_fullscreen) _showControlsTemporarily();
+              },
+              onTapUp: (_) {
+                if (_fullscreen) _showControlsTemporarily();
+              },
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  FocusableIconButton(
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      onPressed: () => Navigator.of(context).maybePop(),
-                      tooltip: 'Back',
-                      semanticsLabel: 'Back to library'),
-                  const Spacer(),
-                  FocusableIconButton(
-                      icon: const Icon(Icons.bookmark_add_outlined),
-                      onPressed: () => _addChapterAtCurrentPosition(),
-                      tooltip: 'Add chapter',
-                      semanticsLabel: 'Add chapter at current position'),
-                  FocusableIconButton(
-                    icon: Icon(_fullscreen
-                        ? Icons.fullscreen_exit_rounded
-                        : Icons.fullscreen_rounded),
-                    onPressed: () => setState(() => _fullscreen = !_fullscreen),
-                    tooltip:
-                        _fullscreen ? 'Exit fullscreen' : 'Enter fullscreen',
-                    semanticsLabel:
-                        _fullscreen ? 'Exit fullscreen' : 'Enter fullscreen',
+                  ColoredBox(
+                    color: CrowColors.pureBlack,
+                    child: Video(
+                        controller: _controller,
+                        fit: video.cropMode.boxFit,
+                        controls: NoVideoControls),
                   ),
+                  if (_controlsVisible || !_fullscreen) ...[
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      right: 8,
+                      child: Row(
+                        children: [
+                          FocusableIconButton(
+                              icon: const Icon(Icons.arrow_back_rounded),
+                              onPressed: () => Navigator.of(context).maybePop(),
+                              tooltip: 'Back',
+                              semanticsLabel: 'Back to library'),
+                          const Spacer(),
+                          FocusableIconButton(
+                              icon: const Icon(Icons.bookmark_add_outlined),
+                              onPressed: () => _addChapterAtCurrentPosition(),
+                              tooltip: 'Add chapter',
+                              semanticsLabel: 'Add chapter at current position'),
+                          FocusableIconButton(
+                            icon: Icon(_fullscreen
+                                ? Icons.fullscreen_exit_rounded
+                                : Icons.fullscreen_rounded),
+                            onPressed: () => setState(() => _fullscreen = !_fullscreen),
+                            tooltip:
+                                _fullscreen ? 'Exit fullscreen' : 'Enter fullscreen',
+                            semanticsLabel:
+                                _fullscreen ? 'Exit fullscreen' : 'Enter fullscreen',
+                          ),
+                        ],
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_fullscreen) _buildFullscreenTransportBar(video),
+                          _buildSeekOverlay(video),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // In windowed mode the side panel already has a full
-                  // Transport card — this compact bar is only needed in
-                  // fullscreen, where that panel is hidden.
-                  if (_fullscreen) _buildFullscreenTransportBar(video),
-                  _buildSeekOverlay(video),
-                ],
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
