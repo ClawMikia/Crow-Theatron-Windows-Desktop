@@ -387,6 +387,12 @@ class CrowDatabase {
     return db.insert('timeline_skips', s.toMap());
   }
 
+  Future<void> updateSkip(TimelineSkip s) async {
+    final db = await database;
+    await db.update('timeline_skips', {'start_ms': s.startMs, 'end_ms': s.endMs, 'label': s.label},
+        where: 'id = ?', whereArgs: [s.id]);
+  }
+
   Future<void> deleteSkip(int id) async {
     final db = await database;
     await db.delete('timeline_skips', where: 'id = ?', whereArgs: [id]);
@@ -449,6 +455,33 @@ class CrowDatabase {
     final db = await database;
     await db.delete('playlist_videos',
         where: 'playlist_id = ? AND video_id = ?', whereArgs: [playlistId, videoId]);
+  }
+
+  /// Every playlist plus how many videos it holds, in one query (used
+  /// by the Playlists screen so opening it never does N follow-up
+  /// queries for N playlists).
+  Future<List<(Playlist, int)>> listPlaylistsWithCounts() async {
+    final db = await database;
+    final rows = await db.rawQuery('''
+      SELECT p.*, COUNT(pv.video_id) AS video_count
+      FROM playlists p
+      LEFT JOIN playlist_videos pv ON pv.playlist_id = p.id
+      GROUP BY p.id
+      ORDER BY p.created_at DESC
+    ''');
+    return rows.map((r) => (Playlist.fromMap(r), (r['video_count'] as int?) ?? 0)).toList();
+  }
+
+  /// Library videos that are NOT already in [playlistId] — the source
+  /// list for "Add videos to playlist".
+  Future<List<VideoEntity>> listVideosNotInPlaylist(int playlistId) async {
+    final db = await database;
+    final rows = await db.rawQuery('''
+      SELECT v.* FROM videos v
+      WHERE v.id NOT IN (SELECT video_id FROM playlist_videos WHERE playlist_id = ?)
+      ORDER BY v.title COLLATE NOCASE ASC
+    ''', [playlistId]);
+    return rows.map(VideoEntity.fromMap).toList();
   }
 
   Future<List<Playlist>> listPlaylists() async {

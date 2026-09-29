@@ -10,7 +10,8 @@ import 'library_screen.dart';
 /// Port of `playlist/PlaylistListActivity.kt` — create, rename, delete,
 /// and open user playlists. Embedded directly in [AppShell]'s content
 /// area (Playlists sidebar item); opening one pushes a standalone
-/// [LibraryScreen] on top with a back button.
+/// [LibraryScreen] on top with a back button. Supports the same
+/// grid/list view toggle as the Library.
 class PlaylistListScreen extends StatefulWidget {
   const PlaylistListScreen({super.key});
 
@@ -19,7 +20,8 @@ class PlaylistListScreen extends StatefulWidget {
 }
 
 class _PlaylistListScreenState extends State<PlaylistListScreen> {
-  List<Playlist> _playlists = [];
+  List<(Playlist, int)> _playlists = [];
+  bool _grid = true;
   late VideoRepository _repo;
 
   @override
@@ -43,7 +45,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
   }
 
   Future<void> _load() async {
-    final list = await _repo.listPlaylists();
+    final list = await _repo.listPlaylistsWithCounts();
     if (mounted) setState(() => _playlists = list);
   }
 
@@ -58,6 +60,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
           controller: controller,
           autofocus: true,
           style: const TextStyle(color: CrowColors.onBg),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
           decoration: const InputDecoration(hintText: 'Playlist name', border: OutlineInputBorder()),
         ),
         actions: [
@@ -78,7 +81,12 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: CrowColors.surfaceElevated,
         title: const Text('Rename Playlist', style: TextStyle(color: CrowColors.onBg)),
-        content: TextField(controller: controller, autofocus: true, style: const TextStyle(color: CrowColors.onBg)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(color: CrowColors.onBg),
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           TextButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('Save')),
@@ -108,6 +116,14 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
     }
   }
 
+  void _open(Playlist p) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LibraryScreen(mode: LibraryMode.playlist, playlistId: p.id, playlistName: p.title, standalone: true),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -115,6 +131,13 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
         SectionHeader(
           title: 'Playlists',
           actions: [
+            FocusableIconButton(
+              icon: Icon(_grid ? Icons.view_list_rounded : Icons.grid_view_rounded, color: CrowColors.onBg),
+              tooltip: 'Toggle view',
+              semanticsLabel: 'Toggle grid or list view',
+              onPressed: () => setState(() => _grid = !_grid),
+            ),
+            const SizedBox(width: 4),
             FilledButton.icon(
               onPressed: _create,
               style: FilledButton.styleFrom(backgroundColor: CrowColors.accentCyan, foregroundColor: CrowColors.bg),
@@ -126,54 +149,174 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
         Expanded(
           child: _playlists.isEmpty
               ? const Center(child: Text('No playlists yet. Create one to get started.', style: TextStyle(color: CrowColors.onMuted)))
-              : GridView.builder(
-                  padding: const EdgeInsets.all(20),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 260,
-                    childAspectRatio: 2.4,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                  ),
-                  itemCount: _playlists.length,
-                  itemBuilder: (context, i) {
-                    final p = _playlists[i];
-                    return Card(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: CrowColors.divider)),
-                      child: FocusableInkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        semanticsLabel: 'Open playlist ${p.title}',
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => LibraryScreen(mode: LibraryMode.playlist, playlistId: p.id, playlistName: p.title, standalone: true),
-                          ),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.playlist_play_rounded, color: CrowColors.accentYellow, size: 30),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(p.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: CrowColors.onBg, fontSize: 15, fontWeight: FontWeight.w600)),
-                              ),
-                              PopupMenuButton<String>(
-                                icon: const Icon(Icons.more_vert_rounded, color: CrowColors.onMuted, size: 20),
-                                color: CrowColors.surfaceElevated,
-                                onSelected: (v) => v == 'rename' ? _rename(p) : _delete(p),
-                                itemBuilder: (context) => const [
-                                  PopupMenuItem(value: 'rename', child: Text('Rename', style: TextStyle(color: CrowColors.onBg))),
-                                  PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: CrowColors.accentRed))),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
+              : _grid
+                  ? GridView.builder(
+                      padding: const EdgeInsets.all(20),
+                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 220,
+                        mainAxisExtent: 190,
+                        crossAxisSpacing: 14,
+                        mainAxisSpacing: 14,
                       ),
-                    );
-                  },
-                ),
+                      itemCount: _playlists.length,
+                      itemBuilder: (context, i) {
+                        final (p, count) = _playlists[i];
+                        return _PlaylistGridCard(playlist: p, count: count, onTap: () => _open(p), onRename: () => _rename(p), onDelete: () => _delete(p));
+                      },
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      itemCount: _playlists.length,
+                      itemBuilder: (context, i) {
+                        final (p, count) = _playlists[i];
+                        return _PlaylistListRow(playlist: p, count: count, onTap: () => _open(p), onRename: () => _rename(p), onDelete: () => _delete(p));
+                      },
+                    ),
         ),
       ],
+    );
+  }
+}
+
+/// Small shared "yellow icon on a soft gradient" motif — same idea as
+/// the video grid's placeholder art, in the playlist's existing accent
+/// (yellow) rather than a new color.
+class _PlaylistArt extends StatelessWidget {
+  const _PlaylistArt();
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [CrowColors.accentYellow.withValues(alpha: 0.22), CrowColors.surfaceElevated],
+            ),
+          ),
+        ),
+        const Center(
+          child: Icon(Icons.playlist_play_rounded, size: 46, color: CrowColors.accentYellow),
+        ),
+      ],
+    );
+  }
+}
+
+class _PlaylistMenu extends StatelessWidget {
+  const _PlaylistMenu({required this.onRename, required this.onDelete});
+  final VoidCallback onRename;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 20),
+      color: CrowColors.surfaceElevated,
+      onSelected: (v) => v == 'rename' ? onRename() : onDelete(),
+      itemBuilder: (context) => const [
+        PopupMenuItem(value: 'rename', child: Text('Rename', style: TextStyle(color: CrowColors.onBg))),
+        PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(color: CrowColors.accentRed))),
+      ],
+    );
+  }
+}
+
+/// Aesthetic grid tile: a big art block up top (like a video thumbnail)
+/// with the title/count below, instead of the old thin single-row card.
+class _PlaylistGridCard extends StatelessWidget {
+  const _PlaylistGridCard({required this.playlist, required this.count, required this.onTap, required this.onRename, required this.onDelete});
+  final Playlist playlist;
+  final int count;
+  final VoidCallback onTap;
+  final VoidCallback onRename;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return FocusableInkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      semanticsLabel: 'Open playlist ${playlist.title}, $count videos',
+      child: Card(
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: const BorderSide(color: CrowColors.accentYellow)),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  const _PlaylistArt(),
+                  Positioned(top: 4, right: 2, child: _PlaylistMenu(onRename: onRename, onDelete: onDelete)),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: 36,
+                    child: Text(playlist.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: CrowColors.onBg, fontSize: 14, height: 1.25)),
+                  ),
+                  Text('$count video${count == 1 ? '' : 's'}', style: const TextStyle(color: CrowColors.onMuted, fontSize: 12)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PlaylistListRow extends StatelessWidget {
+  const _PlaylistListRow({required this.playlist, required this.count, required this.onTap, required this.onRename, required this.onDelete});
+  final Playlist playlist;
+  final int count;
+  final VoidCallback onTap;
+  final VoidCallback onRename;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return FocusableInkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      semanticsLabel: 'Open playlist ${playlist.title}, $count videos',
+      child: Card(
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: const BorderSide(color: CrowColors.accentYellow)),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            children: [
+              const Icon(Icons.playlist_play_rounded, color: CrowColors.accentYellow, size: 30),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(playlist.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: CrowColors.onBg, fontSize: 15, fontWeight: FontWeight.w600)),
+                    Text('$count video${count == 1 ? '' : 's'}', style: const TextStyle(color: CrowColors.onMuted, fontSize: 12)),
+                  ],
+                ),
+              ),
+              _PlaylistMenu(onRename: onRename, onDelete: onDelete),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

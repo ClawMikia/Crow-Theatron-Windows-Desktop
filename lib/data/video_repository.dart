@@ -194,6 +194,11 @@ class VideoRepository extends ChangeNotifier {
     return id;
   }
 
+  Future<void> updateSkip(TimelineSkip s) async {
+    await _db.updateSkip(s);
+    notifyListeners();
+  }
+
   Future<void> deleteSkip(int id) async {
     await _db.deleteSkip(id);
     notifyListeners();
@@ -224,6 +229,10 @@ class VideoRepository extends ChangeNotifier {
   }
 
   Future<List<Playlist>> listPlaylists() => _db.listPlaylists();
+
+  Future<List<(Playlist, int)>> listPlaylistsWithCounts() => _db.listPlaylistsWithCounts();
+
+  Future<List<VideoEntity>> listVideosNotInPlaylist(int playlistId) => _db.listVideosNotInPlaylist(playlistId);
 
   Future<void> addVideoToPlaylist(int playlistId, int videoId) async {
     await _db.addVideoToPlaylist(playlistId, videoId);

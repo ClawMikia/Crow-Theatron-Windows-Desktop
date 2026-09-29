@@ -17,6 +17,15 @@ class TimelineSkip {
     required this.createdAt,
   });
 
+  TimelineSkip copyWith({int? startMs, int? endMs, String? label}) => TimelineSkip(
+        id: id,
+        videoId: videoId,
+        startMs: startMs ?? this.startMs,
+        endMs: endMs ?? this.endMs,
+        label: label ?? this.label,
+        createdAt: createdAt,
+      );
+
   Map<String, Object?> toMap() => {
         'id': id == 0 ? null : id,
         'video_id': videoId,

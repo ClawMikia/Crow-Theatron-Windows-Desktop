@@ -105,6 +105,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _skips = skips;
       });
     }
+    // Keeps PlaybackService's own copy (which is what actually enforces
+    // trim/skips during playback — see _enforceTrimAndSkips) in sync,
+    // so an edit here takes effect immediately even without a reload.
+    await _svc?.refreshSkips();
   }
 
   @override
@@ -343,10 +347,94 @@ class _PlayerScreenState extends State<PlayerScreen> {
               bottom: 0,
               left: 0,
               right: 0,
-              child: _buildSeekOverlay(video),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // In windowed mode the side panel already has a full
+                  // Transport card — this compact bar is only needed in
+                  // fullscreen, where that panel is hidden.
+                  if (_fullscreen) _buildFullscreenTransportBar(video),
+                  _buildSeekOverlay(video),
+                ],
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Play/pause, prev/next, rewind/forward, stop, mute and volume — the
+  /// same controls the mini-player and the windowed Transport/Volume
+  /// cards give you, made available here because fullscreen hides the
+  /// side panel entirely.
+  Widget _buildFullscreenTransportBar(VideoEntity video) {
+    final svc = context.watch<PlaybackService>();
+    final seekSec = context.watch<AppPrefs>().defaultSeekJumpSec;
+    final playing = svc.player.state.playing;
+    final muted = svc.isMuted;
+    final volume = muted ? 0.0 : svc.player.state.volume.clamp(0, 100).toDouble();
+    return Container(
+      color: Colors.black45,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          FocusableIconButton(
+              icon: const Icon(Icons.skip_previous_rounded, color: Colors.white),
+              onPressed: svc.playPrevious,
+              tooltip: 'Previous',
+              semanticsLabel: 'Previous video'),
+          FocusableIconButton(
+              icon: Icon(seekIcon(seekSec, forward: false), color: Colors.white),
+              onPressed: () => svc.seekRelative(-svc.seekStepMs),
+              tooltip: 'Rewind ${seekSec}s',
+              semanticsLabel: 'Rewind $seekSec seconds'),
+          FocusableIconButton(
+            icon: Icon(
+                playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded,
+                color: CrowColors.accentRed),
+            size: 40,
+            onPressed: () => _playPause(svc, video),
+            tooltip: playing ? 'Pause' : 'Play',
+            semanticsLabel: playing ? 'Pause' : 'Play',
+          ),
+          FocusableIconButton(
+              icon: Icon(seekIcon(seekSec, forward: true), color: Colors.white),
+              onPressed: () => svc.seekRelative(svc.seekStepMs),
+              tooltip: 'Forward ${seekSec}s',
+              semanticsLabel: 'Forward $seekSec seconds'),
+          FocusableIconButton(
+              icon: const Icon(Icons.skip_next_rounded, color: Colors.white),
+              onPressed: svc.playNext,
+              tooltip: 'Next',
+              semanticsLabel: 'Next video'),
+          FocusableIconButton(
+              icon: const Icon(Icons.stop_rounded, color: Colors.white),
+              onPressed: svc.stop,
+              tooltip: 'Stop',
+              semanticsLabel: 'Stop playback'),
+          const SizedBox(width: 18),
+          FocusableIconButton(
+            icon: Icon(muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                color: muted ? CrowColors.accentRed : Colors.white),
+            onPressed: svc.toggleMute,
+            tooltip: muted ? 'Unmute' : 'Mute',
+            semanticsLabel: muted ? 'Unmute' : 'Mute',
+          ),
+          SizedBox(
+            width: 110,
+            child: FocusableSlider(
+              value: volume,
+              min: 0,
+              max: 100,
+              activeColor: CrowColors.accentCyan,
+              onChanged: (v) => svc.setVolumePercent(v),
+              semanticsLabel: 'Volume',
+              semanticsValue: '${volume.round()}%',
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -534,6 +622,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             value: volume,
             min: 0,
             max: 100,
+            activeColor: CrowColors.accentCyan,
             onChanged: (v) => svc.setVolumePercent(v),
             onKeyEvent: _handlePlayerSliderKeyEvent,
             semanticsLabel: 'Volume',
@@ -594,6 +683,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               max: 12,
               // Snaps to the pitch step from Settings.
               divisions: (24 / step).round().clamp(1, 480),
+              activeColor: CrowColors.accentGreen,
               onChanged: (v) => _setPitch(video, v),
               onKeyEvent: _handlePlayerSliderKeyEvent,
               semanticsLabel: 'Pitch',
@@ -636,6 +726,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               value: video.playbackSpeed.clamp(0.25, 3.0),
               min: 0.25,
               max: 3.0,
+              activeColor: CrowColors.accentOrange,
               onChanged: (v) => _setSpeed(video, v),
               onKeyEvent: _handlePlayerSliderKeyEvent,
               semanticsLabel: 'Playback speed',
@@ -678,7 +769,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final trimStepMs = context.watch<AppPrefs>().defaultTrimStepMs;
     final trimDivisions = dur > 0 ? (dur / trimStepMs).round().clamp(1, 2000) : null;
     return _Card(
-      accent: CrowColors.accentOrange,
+      accent: CrowColors.accentIndigo,
       title: 'Trim',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -690,6 +781,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             min: 0,
             max: max(dur, 1).toDouble(),
             divisions: trimDivisions,
+            activeColor: CrowColors.accentIndigo,
             onChanged: (v) => _saveVideo(
                 video.copyWith(trimStartMs: min(v.toInt(), end - 1000))),
             onKeyEvent: _handlePlayerSliderKeyEvent,
@@ -703,6 +795,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             min: 0,
             max: max(dur, 1).toDouble(),
             divisions: trimDivisions,
+            activeColor: CrowColors.accentIndigo,
             onChanged: (v) => _saveVideo(video.copyWith(
                 trimEndMs: max(v.toInt(), video.trimStartMs + 1000))),
             onKeyEvent: _handlePlayerSliderKeyEvent,
@@ -719,10 +812,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Icon(Icons.restart_alt_rounded,
-                      size: 16, color: CrowColors.accentOrange),
+                      size: 16, color: CrowColors.accentIndigo),
                   const SizedBox(width: 4),
                   Text('Reset trim',
-                      style: TextStyle(color: CrowColors.accentOrange)),
+                      style: TextStyle(color: CrowColors.accentIndigo)),
                 ],
               ),
             ),
@@ -743,31 +836,35 @@ class _PlayerScreenState extends State<PlayerScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            _skips.isEmpty
-                ? 'No skip segments defined.'
-                : _skips
-                    .map((s) =>
-                        '${s.label}: ${FormatUtils.formatDuration(s.startMs)}\u2013${FormatUtils.formatDuration(s.endMs)}')
-                    .join('\n'),
-            style: const TextStyle(color: CrowColors.onMuted, fontSize: 12),
-          ),
+          if (_skips.isEmpty)
+            const Text('No skip segments defined.', style: TextStyle(color: CrowColors.onMuted, fontSize: 12))
+          else
+            // Tapping a row edits it — the same "Manage" sheet below also
+            // opens straight into edit from its own tap.
+            ..._skips.map((s) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: FocusableInkWell(
+                    onTap: () => _editSkip(s),
+                    borderRadius: BorderRadius.circular(6),
+                    semanticsLabel:
+                        'Edit skip ${s.label}, ${FormatUtils.formatDuration(s.startMs)} to ${FormatUtils.formatDuration(s.endMs)}',
+                    child: Text(
+                      '${s.label}: ${FormatUtils.formatDuration(s.startMs)}\u2013${FormatUtils.formatDuration(s.endMs)}',
+                      style: const TextStyle(color: CrowColors.onMuted, fontSize: 12),
+                    ),
+                  ),
+                )),
           const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                      foregroundColor: CrowColors.accentPink,
-                      side: const BorderSide(color: CrowColors.accentPink)),
+                  style: OutlinedButton.styleFrom(foregroundColor: CrowColors.accentPink, side: const BorderSide(color: CrowColors.accentPink)),
                   onPressed: () async {
                     final pos = svc.player.state.position.inMilliseconds;
-                    final result = await showAddSkipDialog(context,
-                        initialStartMs: pos, initialEndMs: pos + 10000);
+                    final result = await showAddSkipDialog(context, initialStartMs: pos, initialEndMs: pos + 10000);
                     if (result == null) return;
-                    await repoOf(context).addSkip(
-                        _videoId, result.$1, result.$2,
-                        label: result.$3);
+                    await repoOf(context).addSkip(_videoId, result.$1, result.$2, label: result.$3);
                     _reloadChaptersAndSkips();
                   },
                   icon: const Icon(Icons.add_rounded, size: 18),
@@ -777,10 +874,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
               const SizedBox(width: 8),
               if (_skips.isNotEmpty)
                 OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                      foregroundColor: CrowColors.onMuted,
-                      side: const BorderSide(color: CrowColors.divider)),
-                  onPressed: () => _manageSkips(),
+                  style: OutlinedButton.styleFrom(foregroundColor: CrowColors.accentPink, side: const BorderSide(color: CrowColors.accentPink)),
+                  onPressed: _manageSkips,
                   child: const Text('Manage'),
                 ),
             ],
@@ -788,6 +883,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _editSkip(TimelineSkip s) async {
+    final result = await showAddSkipDialog(
+      context,
+      initialStartMs: s.startMs,
+      initialEndMs: s.endMs,
+      initialLabel: s.label,
+      isEdit: true,
+    );
+    if (result == null || !mounted) return;
+    await repoOf(context).updateSkip(s.copyWith(startMs: result.$1, endMs: result.$2, label: result.$3));
+    _reloadChaptersAndSkips();
   }
 
   Future<void> _manageSkips() async {
@@ -798,28 +906,45 @@ class _PlayerScreenState extends State<PlayerScreen> {
         shrinkWrap: true,
         children: _skips
             .map((s) => ListTile(
-                  title: Text(s.label,
-                      style: const TextStyle(color: CrowColors.onBg)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _editSkip(s);
+                  },
+                  title: Text(s.label, style: const TextStyle(color: CrowColors.onBg)),
                   subtitle: Text(
-                      '${FormatUtils.formatDuration(s.startMs)} \u2013 ${FormatUtils.formatDuration(s.endMs)}',
-                      style: const TextStyle(color: CrowColors.onMuted)),
-                  trailing: FocusableIconButton(
-                    icon: const Icon(Icons.delete_outline_rounded,
-                        color: CrowColors.accentRed),
-                    tooltip: 'Delete skip',
-                    semanticsLabel: 'Delete skip ${s.label}',
-                    onPressed: () async {
-                      final ok = await confirmDestructive(
-                        context,
-                        title: 'Delete skip?',
-                        message: 'Delete the timeline skip "${s.label}" '
-                            '(${FormatUtils.formatDuration(s.startMs)} – ${FormatUtils.formatDuration(s.endMs)})?',
-                      );
-                      if (!ok || !mounted) return;
-                      await repoOf(context).deleteSkip(s.id);
-                      if (ctx.mounted) Navigator.pop(ctx);
-                      _reloadChaptersAndSkips();
-                    },
+                    '${FormatUtils.formatDuration(s.startMs)} \u2013 ${FormatUtils.formatDuration(s.endMs)}  \u00b7  tap to edit',
+                    style: const TextStyle(color: CrowColors.onMuted),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      FocusableIconButton(
+                        icon: const Icon(Icons.edit_outlined, color: CrowColors.accentCyan),
+                        tooltip: 'Edit skip',
+                        semanticsLabel: 'Edit skip ${s.label}',
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _editSkip(s);
+                        },
+                      ),
+                      FocusableIconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, color: CrowColors.accentRed),
+                        tooltip: 'Delete skip',
+                        semanticsLabel: 'Delete skip ${s.label}',
+                        onPressed: () async {
+                          final ok = await confirmDestructive(
+                            context,
+                            title: 'Delete skip?',
+                            message: 'Delete the timeline skip "${s.label}" '
+                                '(${FormatUtils.formatDuration(s.startMs)} \u2013 ${FormatUtils.formatDuration(s.endMs)})?',
+                          );
+                          if (!ok || !mounted) return;
+                          await repoOf(context).deleteSkip(s.id);
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          _reloadChaptersAndSkips();
+                        },
+                      ),
+                    ],
                   ),
                 ))
             .toList(),
@@ -827,7 +952,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-// ── Chapters card ────────────────────────────────────────────────────
+// ── Chapters card// ── Chapters card ────────────────────────────────────────────────────
 
   Widget _buildChaptersCard(VideoEntity video) {
     final svc = context.read<PlaybackService>();
@@ -910,7 +1035,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return _Card(
       accent: CrowColors.accentPurple,
       title: 'Visual Enhancement',
+      // Keyed by video id: DropdownButtonFormField only reads
+      // `initialValue` once, at creation. Without this key, Flutter
+      // reuses the same underlying field state for every video shown in
+      // this screen (Next/Previous, auto-advance), so it kept showing
+      // whichever enhancement the FIRST video had instead of each
+      // video's own saved choice.
       child: DropdownButtonFormField<EnhancementMode>(
+        key: ValueKey('enhancement-${video.id}'),
         initialValue: video.enhancement,
         dropdownColor: CrowColors.surfaceElevated,
         style: const TextStyle(color: CrowColors.onBg),
@@ -1014,15 +1146,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               style: OutlinedButton.styleFrom(
                   foregroundColor: CrowColors.accentRed,
                   side: const BorderSide(color: CrowColors.accentRed)),
-              onPressed: () => _saveVideo(VideoEntity(
-                id: video.id,
-                uriString: video.uriString,
-                sourceUriString: video.sourceUriString,
-                title: video.title,
-                folderGroup: video.folderGroup,
-                durationMs: video.durationMs,
-                sizeBytes: video.sizeBytes,
-              )),
+              onPressed: () => _resetAll(video),
               icon: const Icon(Icons.restart_alt_rounded),
               label: const Text('Reset all'),
             ),
@@ -1030,6 +1154,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ],
       ),
     );
+  }
+
+  /// "Reset all" used to only write the defaults to the database — the
+  /// ACTUAL mpv player kept its old speed/pitch/volume until the video
+  /// was reopened, so nothing visibly changed while playing. This now
+  /// pushes the reset values to the live player too. Trim/loop/autoplay/
+  /// enhancement don't need an explicit push: they're read straight from
+  /// `currentVideo`, which `_saveVideo` already updates immediately.
+  /// Playback position and favorite status are intentionally left alone
+  /// — this resets the adjustment/enhancement settings, not where you
+  /// are in the video or whether you've favorited it.
+  Future<void> _resetAll(VideoEntity video) async {
+    final reset = VideoEntity(
+      id: video.id,
+      uriString: video.uriString,
+      sourceUriString: video.sourceUriString,
+      title: video.title,
+      folderGroup: video.folderGroup,
+      durationMs: video.durationMs,
+      sizeBytes: video.sizeBytes,
+      positionMs: video.positionMs,
+      favorite: video.favorite,
+    );
+    await _saveVideo(reset);
+    final svc = _svc;
+    if (svc != null && svc.currentVideo?.id == video.id) {
+      await svc.player.setRate(reset.playbackSpeed);
+      await svc.player.setPitch(1.0); // 0 semitones
+      await svc.setVolumePercent(reset.volumeLevel * 100);
+    }
   }
 
   double _round2(double v) => (v * 100).round() / 100;

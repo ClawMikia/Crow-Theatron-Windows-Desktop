@@ -267,3 +267,72 @@ automatically on first launch (adds the `shuffle_playlist` column and a
   is affected — and that one file is the place to adjust.
 - Please run `flutter analyze` once; I checked bracket balance and
   cross-referenced every new identifier by hand, but not with the compiler.
+
+---
+
+# Round 3 — Trim/Skips, fullscreen controls, playlists, enhancement, Reset all
+
+Cumulative again — copy over your project (rounds 1–3) and run
+`flutter pub get`. Schema stays at v9 (no new columns this round, just
+new queries).
+
+1. **Trim card color + slider colors.** Trim and Speed were both hard-coded
+   to the same orange (see the old `// trim/speed` comment on
+   `accentOrange`). Trim now has its own color, a new `CrowColors.accentIndigo`.
+   Every slider (Volume/Pitch/Speed/Trim) is now tinted to match its own
+   card instead of all defaulting to the theme's plain color.
+   - **Trim not working:** it turned out Trim only clamped *manual* seeks —
+     letting a video simply play past the trim end point did nothing,
+     because nothing was watching for it. Reaching the trim end during
+     normal playback now behaves like reaching the real end of the file
+     (loops / auto-advances / stops, per that video's Playback Options).
+   - **Timeline Skips not working:** skips were saved to the database but
+     never actually used to skip anything — nothing in playback ever
+     checked them. Playback now jumps straight over a skip segment the
+     moment it's entered.
+   - **Editing a skip:** every skip in the card (and in "Manage") is now
+     tappable/has an edit button, opening the same Add-skip dialog
+     pre-filled, saving in place instead of only being deletable.
+
+2. **Fullscreen now has real playback controls.** Fullscreen only ever
+   showed a bare seek bar — every other control lived in the side panel,
+   which fullscreen hides. It now also shows Previous / Rewind /
+   Play-Pause / Forward / Next / Stop and Mute + Volume, matching the
+   mini-player, right above the seek bar.
+
+3. **Playlists screen** now has the same grid/list view toggle as the
+   Library, and each playlist's card was redesigned into a proper grid
+   tile (art block + title + video count) instead of the old thin single
+   -line row — kept the existing yellow color. A list-row layout is
+   available too.
+
+4. **Visual Enhancement dropdown.** Its value only ever reflected
+   whichever video was open *first*: Flutter's `DropdownButtonFormField`
+   only reads its initial value once and was being reused across videos
+   without any way to tell it a new one had loaded, so Next/Previous/
+   auto-advance could show the wrong preset selected (even though the
+   right one was actually saved). It's now correctly refreshed per video.
+   I could not run the app to confirm this was the entire "switching
+   options does nothing" symptom — if a preset still doesn't visibly
+   change the picture after this, the native filter call in
+   `applyVideoFilters` (`services/playback_service.dart`) is the other
+   suspect; it already has a documented adjustment point for a
+   media_kit version mismatch.
+
+5. **Playlist detail screen** (opening a specific playlist): it reused the
+   Library screen, which — like the bug above — only showed its header
+   (and therefore the grid/list toggle and any actions) once there was at
+   least one video, so an *empty* playlist had literally no controls on
+   it at all, just a generic "pick a folder from Home" message that
+   didn't even apply. The header (and grid/list toggle) now always shows.
+   Added an **Add videos** button (header, and also front-and-center on
+   an empty playlist) that lists only videos not already in it, with
+   search + checkboxes, for adding several at once. Removing multiple
+   already worked correctly via Select-many from round 2 — confirmed it
+   only removes the playlist entry, never the library video.
+
+6. **Reset all** wrote the reset values to the database, but the actual
+   player kept its old speed/pitch/volume until the video was reopened
+   — so nothing changed if you were mid-playback. It now also pushes
+   speed/pitch/volume to the live player immediately. Playback position
+   and favorite status are deliberately left untouched by Reset all.

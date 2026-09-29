@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/video_repository.dart';
+import '../models/video_entity.dart';
 import '../theme/crow_colors.dart';
 import 'confirm_dialog.dart';
 
@@ -314,5 +315,105 @@ class BulkActions {
     await repo.deleteVideos(ids.toList());
     _snack(context, 'Removed $n video${n == 1 ? '' : 's'} from the library');
     return true;
+  }
+}
+
+
+/// "Add videos to playlist" picker — shows only videos NOT already in
+/// the playlist, with search + multi-select, and adds whichever are
+/// checked. Returns how many were added (0 if the user cancelled).
+Future<int> showAddVideosToPlaylistPicker(BuildContext context, VideoRepository repo, int playlistId) async {
+  final candidates = await repo.listVideosNotInPlaylist(playlistId);
+  if (!context.mounted) return 0;
+  if (candidates.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Every video in your library is already in this playlist.')),
+    );
+    return 0;
+  }
+  final chosen = await showDialog<Set<int>>(
+    context: context,
+    builder: (ctx) => _AddVideosDialog(candidates: candidates),
+  );
+  if (chosen == null || chosen.isEmpty || !context.mounted) return 0;
+  final added = await repo.addVideosToPlaylist(playlistId, chosen.toList());
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Added $added video${added == 1 ? '' : 's'} to the playlist')),
+    );
+  }
+  return added;
+}
+
+class _AddVideosDialog extends StatefulWidget {
+  const _AddVideosDialog({required this.candidates});
+  final List<VideoEntity> candidates;
+
+  @override
+  State<_AddVideosDialog> createState() => _AddVideosDialogState();
+}
+
+class _AddVideosDialogState extends State<_AddVideosDialog> {
+  final Set<int> _picked = {};
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _query.isEmpty
+        ? widget.candidates
+        : widget.candidates.where((v) => v.title.toLowerCase().contains(_query.toLowerCase())).toList();
+    return AlertDialog(
+      backgroundColor: CrowColors.surfaceElevated,
+      title: Text('Add videos${_picked.isEmpty ? '' : ' (${_picked.length} selected)'}', style: const TextStyle(color: CrowColors.onBg)),
+      content: SizedBox(
+        width: 460,
+        height: 460,
+        child: Column(
+          children: [
+            TextField(
+              autofocus: true,
+              style: const TextStyle(color: CrowColors.onBg),
+              decoration: const InputDecoration(hintText: 'Search your library', prefixIcon: Icon(Icons.search_rounded), border: OutlineInputBorder()),
+              onChanged: (v) => setState(() => _query = v),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: filtered.isEmpty
+                  ? const Center(child: Text('No matches.', style: TextStyle(color: CrowColors.onMuted)))
+                  : ListView.builder(
+                      itemCount: filtered.length,
+                      itemBuilder: (context, i) {
+                        final v = filtered[i];
+                        final checked = _picked.contains(v.id);
+                        return CheckboxListTile(
+                          dense: true,
+                          value: checked,
+                          activeColor: CrowColors.accentYellow,
+                          checkColor: CrowColors.bg,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: Text(v.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: CrowColors.onBg, fontSize: 13)),
+                          subtitle: Text(v.folderGroup, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: CrowColors.onMuted, fontSize: 11)),
+                          onChanged: (v2) => setState(() {
+                            if (v2 == true) {
+                              _picked.add(v.id);
+                            } else {
+                              _picked.remove(v.id);
+                            }
+                          }),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        TextButton(
+          onPressed: _picked.isEmpty ? null : () => Navigator.pop(context, _picked),
+          child: Text(_picked.isEmpty ? 'Add' : 'Add ${_picked.length}', style: const TextStyle(color: CrowColors.accentCyan)),
+        ),
+      ],
+    );
   }
 }

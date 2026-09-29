@@ -36,10 +36,18 @@ Future<String?> showAddChapterDialog(BuildContext context, int positionMs) {
 }
 
 /// Port of `dialog_add_skip.xml`. Returns (startMs, endMs, label) or null.
-Future<(int, int, String)?> showAddSkipDialog(BuildContext context, {required int initialStartMs, required int initialEndMs}) {
+/// Pass [initialLabel] and set [isEdit] to reuse this as the "edit an
+/// existing timeline skip" dialog.
+Future<(int, int, String)?> showAddSkipDialog(
+  BuildContext context, {
+  required int initialStartMs,
+  required int initialEndMs,
+  String initialLabel = 'Skip',
+  bool isEdit = false,
+}) {
   final startCtrl = TextEditingController(text: FormatUtils.formatDuration(initialStartMs));
   final endCtrl = TextEditingController(text: FormatUtils.formatDuration(initialEndMs));
-  final labelCtrl = TextEditingController(text: 'Skip');
+  final labelCtrl = TextEditingController(text: initialLabel);
 
   int? _parse(String text) {
     final parts = text.split(':').map((e) => int.tryParse(e.trim())).toList();
@@ -53,7 +61,7 @@ Future<(int, int, String)?> showAddSkipDialog(BuildContext context, {required in
     context: context,
     builder: (ctx) => AlertDialog(
       backgroundColor: CrowColors.surfaceElevated,
-      title: const Text('Add Timeline Skip', style: TextStyle(color: CrowColors.onBg)),
+      title: Text(isEdit ? 'Edit Timeline Skip' : 'Add Timeline Skip', style: const TextStyle(color: CrowColors.onBg)),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -85,7 +93,7 @@ Future<(int, int, String)?> showAddSkipDialog(BuildContext context, {required in
             if (s == null || e == null || e <= s) return;
             Navigator.pop(ctx, (s, e, labelCtrl.text.trim().isEmpty ? 'Skip' : labelCtrl.text.trim()));
           },
-          child: const Text('Add', style: TextStyle(color: CrowColors.accentPink)),
+          child: Text(isEdit ? 'Save' : 'Add', style: const TextStyle(color: CrowColors.accentPink)),
         ),
       ],
     ),

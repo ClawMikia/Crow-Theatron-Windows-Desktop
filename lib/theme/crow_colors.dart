@@ -21,6 +21,7 @@ class CrowColors {
   static const Color accentRed = Color(0xFFFF2D55); // play
   static const Color accentPurple = Color(0xFFBF5FFF); // enhancement
   static const Color accentPink = Color(0xFFF21505); // skips
+  static const Color accentIndigo = Color(0xFF5C6BFF); // trim (was sharing accentOrange with speed)
 
   static const Color timelineYellow = Color(0xFFE6C200);
   static const Color timelineBlue = Color(0xFF3B7DD6);

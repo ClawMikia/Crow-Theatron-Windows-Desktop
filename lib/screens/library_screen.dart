@@ -215,6 +215,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
     _focus.requestFocus();
   }
 
+  Future<void> _addVideosToPlaylist() => showAddVideosToPlaylistPicker(context, _repo, widget.playlistId!);
+
   Future<void> _bulkMove() async {
     if (await BulkActions.moveToFolder(context, _repo, _selection.ids)) _selection.exit();
   }
@@ -272,11 +274,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return SectionHeader(
       title: _title,
       actions: [
+        if (widget.mode == LibraryMode.playlist)
+          FocusableIconButton(
+            icon: const Icon(Icons.playlist_add_rounded, color: CrowColors.accentYellow),
+            tooltip: 'Add videos to this playlist',
+            semanticsLabel: 'Add videos to this playlist',
+            onPressed: _addVideosToPlaylist,
+          ),
         FocusableIconButton(
           icon: const Icon(Icons.checklist_rounded, color: CrowColors.onBg),
           tooltip: 'Select videos (Ctrl+A selects all)',
           semanticsLabel: 'Select multiple videos',
-          onPressed: _enterSelection,
+          onPressed: _videos.isEmpty ? null : _enterSelection,
         ),
         FocusableIconButton(
           icon: Icon(_grid ? Icons.view_list_rounded : Icons.grid_view_rounded, color: CrowColors.onBg),
@@ -289,16 +298,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Widget _content() {
+    // The header (with the grid/list toggle, Select, and — for a
+    // playlist — Add videos) used to only render once there were
+    // videos to show, so an empty playlist had no way to add anything
+    // and no view toggle either. It's now always shown; only the body
+    // below it changes.
+    final header = _headerOrSelectionBar();
+
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: CrowColors.accentYellow));
+      return Column(children: [header, const Expanded(child: Center(child: CircularProgressIndicator(color: CrowColors.accentYellow)))]);
     }
     if (_videos.isEmpty) {
-      return const Center(
-        child: Text('No videos yet. Pick a folder from Home.', style: TextStyle(color: CrowColors.onMuted)),
-      );
+      return Column(children: [header, Expanded(child: Center(child: _emptyState()))]);
     }
-
-    final header = _headerOrSelectionBar();
 
     if (widget.mode != LibraryMode.all) {
       return Column(
@@ -350,6 +362,27 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ),
       ],
     );
+  }
+
+  Widget _emptyState() {
+    if (widget.mode == LibraryMode.playlist) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.playlist_add_rounded, size: 40, color: CrowColors.onMuted),
+          const SizedBox(height: 12),
+          const Text('This playlist is empty.', style: TextStyle(color: CrowColors.onMuted)),
+          const SizedBox(height: 14),
+          FilledButton.icon(
+            onPressed: _addVideosToPlaylist,
+            style: FilledButton.styleFrom(backgroundColor: CrowColors.accentYellow, foregroundColor: CrowColors.bg),
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Add videos'),
+          ),
+        ],
+      );
+    }
+    return const Text('No videos yet. Pick a folder from Home.', style: TextStyle(color: CrowColors.onMuted));
   }
 
   Widget _buildFlat(List<VideoEntity> videos) {

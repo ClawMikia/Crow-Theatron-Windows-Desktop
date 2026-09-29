@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart';
 
 import '../data/app_prefs.dart';
 import '../data/video_repository.dart';
+import '../models/timeline_skip.dart';
 import '../models/video_entity.dart';
 import 'media_session/media_session_service.dart';
 
@@ -46,6 +47,7 @@ class PlaybackService extends ChangeNotifier {
         position: position,
         duration: _player.state.duration,
       );
+      _enforceTrimAndSkips(position);
     });
     _initMediaSession();
   }
@@ -95,6 +97,48 @@ class PlaybackService extends ChangeNotifier {
           break;
       }
     });
+  }
+
+  /// Timeline skips for the CURRENTLY LOADED video, used to actually
+  /// jump over them during normal playback (see [_enforceTrimAndSkips]).
+  /// Loaded whenever a video opens; call [refreshSkips] after
+  /// adding/editing/deleting one so the change takes effect without
+  /// reopening the video.
+  List<TimelineSkip> _skips = [];
+  bool _enforcing = false;
+
+  Future<void> refreshSkips() async {
+    final v = currentVideo;
+    _skips = v == null ? [] : await _repo.listSkips(v.id);
+  }
+
+  /// Makes Trim and Timeline Skips actually DO something during normal
+  /// playback, not just clamp manual seeks: jumps straight past any
+  /// skip segment the position enters, and treats reaching the trim end
+  /// the same as reaching the real end of the file (loop / autoplay /
+  /// stop, whichever the video's Playback Options say).
+  void _enforceTrimAndSkips(Duration position) {
+    if (_enforcing || !_player.state.playing) return;
+    final v = currentVideo;
+    if (v == null) return;
+    final posMs = position.inMilliseconds;
+
+    for (final skip in _skips) {
+      if (posMs >= skip.startMs && posMs < skip.endMs) {
+        _enforcing = true;
+        _player.seek(Duration(milliseconds: skip.endMs)).whenComplete(() => _enforcing = false);
+        return;
+      }
+    }
+
+    final end = trimEndMs;
+    if (end > 0 && v.durationMs > 0 && posMs >= end && posMs < v.durationMs - 250) {
+      _enforcing = true;
+      _onCompleted();
+      // Give the seek/pause/next a moment to land before re-arming, so
+      // one crossing doesn't fire this repeatedly on the next few ticks.
+      Future.delayed(const Duration(milliseconds: 500), () => _enforcing = false);
+    }
   }
 
   VideoEntity? _currentVideo;
@@ -168,6 +212,7 @@ class PlaybackService extends ChangeNotifier {
     // Mute is a session-level state: stays muted across tracks.
     await _player.setVolume(_isMuted ? 0 : savedVolume);
     await applyVideoFilters(video);
+    _skips = await _repo.listSkips(video.id);
     if (video.positionMs > 0 && video.positionMs < video.durationMs) {
       await _player.seek(Duration(milliseconds: video.positionMs));
     } else if (video.trimStartMs > 0) {
