@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart';
 
 import '../data/app_prefs.dart';
 import '../data/video_repository.dart';
+import '../models/eq_preset.dart';
 import '../models/timeline_skip.dart';
 import '../models/video_entity.dart';
 import 'media_session/media_session_service.dart';
@@ -212,6 +213,7 @@ class PlaybackService extends ChangeNotifier {
     // Mute is a session-level state: stays muted across tracks.
     await _player.setVolume(_isMuted ? 0 : savedVolume);
     await applyVideoFilters(video);
+    await applyAudioEq(video);
     _skips = await _repo.listSkips(video.id);
     if (video.positionMs > 0 && video.positionMs < video.durationMs) {
       await _player.seek(Duration(milliseconds: video.positionMs));
@@ -257,6 +259,45 @@ class PlaybackService extends ChangeNotifier {
     } catch (_) {
       // Filter chain unsupported/renamed on this backend — ignore,
       // picture still plays without the enhancement filter applied.
+    }
+  }
+
+  /// Applies the video's audio EQ preset as a LABELLED mpv audio filter
+  /// (`@crow_eq`), so it never clobbers other `af` filters such as the
+  /// pitch shifter. Used by the Crow-Chap remote and on every video open.
+  Future<void> applyAudioEq(VideoEntity v) async {
+    final platform = _player.platform;
+    if (platform == null) return;
+    // Same dynamic-call approach as applyVideoFilters(): `command` lives
+    // on the concrete NativePlayer. If your media_kit version differs,
+    // adjust this one call — failures are swallowed on purpose.
+    final dynamic native = platform;
+    try {
+      await native.command(['af', 'remove', '@crow_eq']);
+    } catch (_) {}
+    final f = _eqFilter(v.eqPreset);
+    if (f.isEmpty) return;
+    try {
+      await native.command(['af', 'add', '@crow_eq:lavfi=[$f]']);
+    } catch (_) {}
+  }
+
+  String _eqFilter(EqPreset p) {
+    switch (p) {
+      case EqPreset.flat:
+        return '';
+      case EqPreset.bassBoost:
+        return 'bass=g=8:f=110';
+      case EqPreset.trebleBoost:
+        return 'treble=g=6:f=3000';
+      case EqPreset.vocalClarity:
+        return 'equalizer=f=2500:width_type=q:width=1:g=4';
+      case EqPreset.cinema:
+        return 'bass=g=4:f=100,treble=g=3:f=4000';
+      case EqPreset.night:
+        return 'acompressor=threshold=0.089:ratio=4:attack=20:release=250';
+      case EqPreset.loud:
+        return 'bass=g=5:f=100,treble=g=4:f=4000';
     }
   }
 

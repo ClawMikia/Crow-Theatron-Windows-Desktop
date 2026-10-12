@@ -8,6 +8,7 @@ import 'data/app_prefs.dart';
 import 'data/video_repository.dart';
 import 'screens/splash_screen.dart';
 import 'services/playback_service.dart';
+import 'services/remote/remote_server.dart';
 import 'services/thumbnail_service.dart';
 import 'state/shell_nav.dart';
 import 'theme/crow_theme.dart';
@@ -62,6 +63,12 @@ class CrowTheatronApp extends StatelessWidget {
         ChangeNotifierProvider<VideoRepository>.value(value: repo),
         ChangeNotifierProvider<PlaybackService>(create: (_) => PlaybackService(repo)),
         ChangeNotifierProvider<ShellNavState>(create: (_) => ShellNavState()),
+        // Crow-Chap phone remote (TCP 8765 / UDP 8766). Off until enabled
+        // in Settings → Remote control.
+        ChangeNotifierProvider<RemoteServer>(
+          lazy: false,
+          create: (ctx) => RemoteServer(ctx.read<PlaybackService>(), repo)..init(),
+        ),
         // Background preview-frame generator for library thumbnails.
         // `lazy: false` so it starts working as soon as the app opens.
         Provider<ThumbnailService>(

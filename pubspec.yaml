@@ -42,6 +42,9 @@ dependencies:
   # Windows: System Media Transport Controls. Needs `rustup` installed
   # on the build machine — see README "Media keys / earbud support".
   smtc_windows: ^1.1.0
+  # ── Crow-Chap phone remote: pairing QR code shown in Settings ──
+  qr_flutter: ^4.1.0
+
   # Web: typed bindings for navigator.mediaSession (Media Session API).
   web: ^1.1.0
 

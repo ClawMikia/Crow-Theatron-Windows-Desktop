@@ -4,6 +4,7 @@ import '../data/app_prefs.dart';
 import '../theme/crow_colors.dart';
 import '../widgets/section_header.dart';
 import '../widgets/keyboard_accessible.dart';
+import '../widgets/remote_settings_card.dart';
 
 /// Port of `activity_settings.xml` + `settings/SettingsActivity.kt`.
 /// "Display & Playback" defaults — applied to newly scanned videos and
@@ -184,6 +185,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  const RemoteSettingsCard(),
                   const SizedBox(height: 16),
                   OutlinedButton.icon(
                     onPressed: _resetDefaults,
