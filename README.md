@@ -1,7 +1,7 @@
 # Crow Théatron — Windows Desktop / Web (Flutter port)
 
 A Flutter port of the `Crow-Theatron-Android` app, built for **Windows Desktop**
-(with a **Web** build as well, per your request). It went through two passes:
+(with a **Web** build as well). It went through two passes:
 first a faithful port of the phone UI, then a full desktop restructure —
 sidebar navigation, a folder-panel + wide grid library, and a video +
 side-panel player — so it feels like a desktop app rather than a phone
@@ -68,11 +68,34 @@ dart run sqflite_common_ffi_web:setup
 
 (Run this once; it copies the `sqlite3.wasm` worker into `web/`.)
 
+### Media keys / earbud support (Windows)
+
+The app uses `smtc_windows` for System Media Transport Controls (play/pause/next/prev
+from hardware media keys, headphones, lock screen). This requires `rustup`
+installed on the **build machine** (not the target machine):
+
+```powershell
+# Install rustup if not present
+winget install Rustlang.Rustup
+rustup default stable
+```
+
+Then rebuild:
+```powershell
+flutter clean
+flutter pub get
+flutter build windows
+```
+
+If you don't need media key support, you can remove `smtc_windows` from `pubspec.yaml`
+and the related code in `lib/services/media_session/`.
+
 ## 2. Run it
 
 ```powershell
 flutter run -d windows      # Windows desktop, hot reload
 flutter run -d chrome       # Web, in Chrome
+flutter run -d edge         # Web, in Edge
 ```
 
 ## 3. Build a release
@@ -80,6 +103,14 @@ flutter run -d chrome       # Web, in Chrome
 ```powershell
 flutter build windows       # → build/windows/x64/runner/Release/crow_theatron.exe
 flutter build web           # → build/web/  (deploy as a static site)
+```
+
+### Build variants
+
+```powershell
+flutter build windows --release       # Release (default)
+flutter build windows --profile       # Profile build
+flutter build windows --debug         # Debug build (larger, with asserts)
 ```
 
 ## Desktop shell architecture
@@ -118,6 +149,29 @@ persistent shell:
   layout's video-on-top-then-cards-below single scrolling column.
   Fullscreen still collapses everything to just the video.
 
+## Key features
+
+| Feature | Description |
+|---------|-------------|
+| **Video Playback** | libmpv-based via `media_kit` — supports pitch, speed, video filters (eq, hue, unsharp), hardware decoding |
+| **Local Library** | SQLite database mirroring Android schema — folders, videos, playlists, chapters, timeline skips |
+| **Enhancement Presets** | Real-time video filters (brightness, contrast, saturation, hue, sharpen) driven by libmpv `vf` chain |
+| **Equalizer** | Multi-band EQ presets with custom profile support |
+| **Crop/Zoom Modes** | Fit, fill, stretch, 16:9, 4:3, 21:9, custom aspect ratios |
+| **Chapter Markers** | Add/edit/skip chapters with timeline visualization |
+| **Timeline Skips** | Mark and skip intros, outros, credits, custom segments |
+| **Continue Watching** | Playback position memory per video, resume from last position |
+| **Favorites** | Mark/unmark videos, dedicated Favorites shelf |
+| **Playlists** | Create, edit, reorder, delete playlists; playlist video grid |
+| **Folder Scanner** | Recursive folder scanning with media file detection (video extensions) |
+| **Mini Player** | Always-visible bottom dock with play/pause, seek, title, next/prev |
+| **Custom Title Bar** | Frameless window with drag area, minimize/maximize/close, app icon |
+| **Keyboard Shortcuts** | Space (play/pause), arrows (seek), F/f (fullscreen), M (mute), +/- (volume), etc. |
+| **Remote Control** | Crow-Chap phone remote via QR pairing (WebSocket + local HTTP) |
+| **Media Session** | Windows SMTC + Web Media Session API for OS-level transport controls |
+| **Responsive Layout** | Breakpoints for compact/medium/expanded window widths |
+| **Dark/Light Theme** | System-following with manual override, custom Orbitron font |
+
 ## File map (Android → Flutter)
 
 | Android | Flutter |
@@ -148,6 +202,77 @@ persistent shell:
 | `player/PlayerActivity.kt` + `activity_player.xml` | `lib/screens/player_screen.dart` (video + fixed side panel) |
 | `dialog_add_chapter.xml`, `dialog_add_skip.xml` | `lib/widgets/player_dialogs.dart` |
 | (window chrome — new for desktop) | `lib/widgets/crow_title_bar.dart` (icon + drag area + minimize/maximize/close) |
+| (remote control — new) | `lib/services/remote/` (remote_server.dart, remote_server_io.dart, remote_server_stub.dart) |
+| (media session — new) | `lib/services/media_session/` (Windows SMTC + Web Media Session) |
+
+## Project structure
+
+```
+lib/
+├── main.dart                          # App entry point, theme, providers
+├── models/                            # Data models (video, playlist, eq, crop, chapters, skips, enhancement)
+├── data/                              # Repository, database, folder scanner, prefs
+├── services/
+│   ├── playback_service.dart          # media_kit wrapper, playlist management
+│   ├── thumbnail_service.dart         # Thumbnail generation (placeholder)
+│   ├── remote/                        # Crow-Chap phone remote (WebSocket server)
+│   └── media_session/                 # OS media session (Windows SMTC + Web)
+├── widgets/                           # Reusable UI components
+│   ├── app_shell.dart                 # Root shell: titlebar + sidebar + content + mini-player
+│   ├── crow_sidebar.dart              # Left navigation rail
+│   ├── crow_title_bar.dart            # Custom frameless window title bar
+│   ├── crow_scaffold.dart             # Scaffold for pushed routes (toolbar + mini-player)
+│   ├── crow_bottom_nav.dart           # Legacy bottom nav (kept for reference)
+│   ├── video_tiles.dart               # Video grid/list tiles with responsive delegate
+│   ├── mini_player.dart               # Bottom dock mini player
+│   ├── player_dialogs.dart            # Chapter/skip editor dialogs
+│   ├── section_header.dart            # Section title + actions
+│   ├── library_actions.dart           # Library toolbar actions (sort, filter, view mode)
+│   ├── keyboard_accessible.dart       # Focus/keyboard helpers
+│   ├── confirm_dialog.dart            # Generic confirmation dialog
+│   └── remote_settings_card.dart      # Remote pairing QR + status
+├── screens/                           # Top-level screens
+│   ├── splash_screen.dart
+│   ├── main_screen.dart               # Home dashboard
+│   ├── library_screen.dart            # Folder panel + grid (standalone or embedded)
+│   ├── explore_screen.dart            # Browse/filter videos
+│   ├── playlist_list_screen.dart      # Playlist management
+│   ├── player_screen.dart             # Full player with side panel
+│   ├── enhancement_screen.dart        # Video filter presets + sliders
+│   ├── settings_screen.dart           # App settings, remote pairing
+│   ├── folder_select_screen.dart      # Folder picker (SAF-style)
+│   └── playback_memory_screen.dart    # Continue watching (legacy, merged)
+├── state/
+│   └── shell_nav.dart                 # Sidebar navigation state (ChangeNotifier)
+├── theme/
+│   ├── crow_colors.dart               # Color palette
+│   └── crow_theme.dart                # ThemeData + extensions
+├── util/
+│   ├── format_utils.dart              # Duration, file size, date formatting
+│   ├── seek_icons.dart                # Seek button icons
+│   └── video_open.dart                # Video file association helpers
+└── shortcuts/
+    └── app_shortcuts.dart             # Keyboard shortcut definitions
+```
+
+## Dependencies
+
+| Package | Purpose |
+|---------|---------|
+| `media_kit` | Core playback engine (libmpv) |
+| `media_kit_video` | Video output widget |
+| `media_kit_libs_video` | Bundled libmpv/FFmpeg binaries |
+| `sqflite_common_ffi` | SQLite on desktop (via ffi) |
+| `sqflite_common_ffi_web` | SQLite on Web (WASM) |
+| `shared_preferences` | Key-value prefs (mirrors Android SharedPreferences) |
+| `file_picker` | Folder/file picking (SAF replacement) |
+| `window_manager` | Frameless window, custom title bar |
+| `path_provider` | App data directory paths |
+| `provider` | Lightweight state management (ChangeNotifier) |
+| `smtc_windows` | Windows System Media Transport Controls |
+| `qr_flutter` | QR code for remote pairing |
+| `web` | Web platform APIs (Media Session) |
+| `path` | Path manipulation |
 
 ## Known simplifications vs. the Android app
 
@@ -168,3 +293,67 @@ persistent shell:
 - Visual "Enhancement" presets and the brightness/contrast/saturation/hue/
   sharpen sliders are real — they drive libmpv's `vf=eq,hue,unsharp`
   filter chain live, not just a label.
+- **Remote control server** is a basic WebSocket + HTTP implementation;
+  production hardening (auth, TLS, mDNS discovery) would be needed for
+  real-world deployment.
+
+## Configuration
+
+### App Preferences (`lib/data/app_prefs.dart`)
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `themeMode` | int | 0 (system) | 0=system, 1=light, 2=dark |
+| `lastSelectedFolder` | String? | null | Last opened folder path |
+| `defaultEnhancementMode` | String | "normal" | Enhancement preset ID |
+| `defaultEqPreset` | String | "flat" | EQ preset ID |
+| `defaultCropMode` | String | "fit" | Crop/zoom mode ID |
+| `playbackSpeed` | double | 1.0 | Global playback speed |
+| `pitchCorrection` | bool | true | Enable pitch correction on speed change |
+| `rememberPosition` | bool | true | Resume playback position |
+| `miniPlayerEnabled` | bool | true | Show mini player dock |
+| `remoteEnabled` | bool | false | Enable Crow-Chap remote |
+
+### Database Schema (`lib/data/crow_database.dart`)
+
+Tables mirror the Android `CrowDbHelper`:
+- `videos` — video metadata, playback position, enhancement settings
+- `folders` — watched folder paths
+- `playlists` — playlist metadata
+- `playlist_videos` — playlist ↔ video many-to-many with order
+- `chapters` — chapter markers per video
+- `timeline_skips` — skip segments per video
+
+## Testing
+
+```powershell
+flutter test                    # Run unit/widget tests
+flutter test --coverage         # With coverage report
+```
+
+Current test coverage is minimal (`test/widget_test.dart` only). Add tests for:
+- `VideoRepository` CRUD operations
+- `FolderScanner` file detection
+- `PlaybackService` playlist management
+- Enhancement/EQ/Crop mode application
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| `flutter doctor` shows "Windows" not checked | Install Visual Studio 2022 with "Desktop development with C++" workload |
+| `smtc_windows` build fails | Install `rustup`, run `rustup default stable`, then `flutter clean && flutter pub get` |
+| Web SQLite errors | Run `dart run sqflite_common_ffi_web:setup` |
+| Icon not showing in title bar | Ensure `windows/runner/resources/app_icon.ico` is the project's icon (not Flutter's placeholder) |
+| Hot reload not working on Windows | Use `flutter run -d windows --hot` or check VS Code launch config |
+| Remote pairing fails | Check firewall allows inbound on the server port (default 8080) |
+
+## License
+
+Proprietary / Internal use only. Derived from `Crow-Theatron-Android`.
+
+---
+
+**Version**: 2.0.0  
+**Flutter SDK**: >=3.4.0 <4.0.0  
+**Platforms**: Windows (x64), Web (Chrome/Edge/Firefox)

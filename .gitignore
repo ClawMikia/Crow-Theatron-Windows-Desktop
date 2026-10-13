@@ -157,3 +157,24 @@ app.*.map.json
 .svn/
 .swiftpm/
 migrate_working_dir/
+
+# Project-specific: Remote server logs and temp files
+*.server.log
+remote_server_temp/
+
+# Project-specific: Media session / SMTC cache
+smtc_cache/
+
+# Python bridge tool (if used locally)
+tools/__pycache__/
+tools/*.pyc
+
+# VS Code workspace settings (user-specific)
+.vscode/settings.json
+.vscode/launch.json
+
+# Flutter pub cache (already covered by .pub-cache but explicit)
+.pub-cache/
+
+# Windows app data / local storage (runtime)
+windows/runner/data/
