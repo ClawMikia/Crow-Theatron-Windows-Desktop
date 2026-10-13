@@ -1226,6 +1226,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       id: video.id,
       uriString: video.uriString,
       sourceUriString: video.sourceUriString,
+      internalUriString: video.internalUriString,
       title: video.title,
       folderGroup: video.folderGroup,
       durationMs: video.durationMs,

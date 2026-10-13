@@ -212,7 +212,10 @@ class PlaybackService extends ChangeNotifier {
     queueIndex = queue.indexWhere((v) => v.id == video.id);
     if (queueIndex < 0) queueIndex = 0;
 
-    await _player.open(Media(video.uriString), play: true);
+    // Use internal copy if available (persists even if original file is deleted),
+    // otherwise fall back to original path.
+    final playbackUri = video.internalUriString ?? video.uriString;
+    await _player.open(Media(playbackUri), play: true);
     await _player.setRate(video.playbackSpeed);
     await _player.setPitch(_semitonesToRatio(video.pitchSemitones));
     final savedVolume = (video.volumeLevel * 100).clamp(0, 100).toDouble();

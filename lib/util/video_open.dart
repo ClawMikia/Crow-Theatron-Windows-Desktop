@@ -12,10 +12,26 @@ import '../screens/player_screen.dart';
 /// gets a clear message instead of a broken player.
 Future<void> openVideoPlayer(BuildContext context, VideoEntity video, List<VideoEntity> siblings) async {
   if (!kIsWeb) {
-    bool exists = true;
-    try {
-      exists = await File(video.uriString).exists();
-    } catch (_) {}
+    // Check internal copy first (persists even if original is deleted)
+    String? playbackPath = video.internalUriString;
+    bool exists = false;
+    
+    if (playbackPath != null) {
+      try {
+        exists = await File(playbackPath).exists();
+      } catch (_) {}
+    }
+    
+    // Fall back to original path if no internal copy or it doesn't exist
+    if (!exists) {
+      try {
+        exists = await File(video.uriString).exists();
+        if (exists) {
+          playbackPath = video.uriString;
+        }
+      } catch (_) {}
+    }
+    
     if (!exists) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
