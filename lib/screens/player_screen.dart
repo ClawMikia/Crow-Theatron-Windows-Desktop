@@ -62,6 +62,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _init() async {
     final svc = context.read<PlaybackService>();
     _svc = svc;
+    _fullscreen = svc.fullscreen;
     _repo = repoOf(context);
     _repo!.addListener(_onRepoChanged);
     svc.addListener(_onPlaybackServiceChanged);
@@ -84,7 +85,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _onPlaybackServiceChanged() {
-    if (!mounted || _video == null) return;
+    if (!mounted) return;
+    // Fullscreen may have been toggled from anywhere (this screen, the
+    // F key, or the phone remote) — mirror the service's state.
+    final fs = _svc?.fullscreen ?? false;
+    if (fs != _fullscreen) _setFullscreen(fs);
+    if (_video == null) return;
     final current = _svc?.currentVideo;
     if (current != null && current.id != _video!.id) {
       setState(() => _video = current);
@@ -121,6 +127,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _hideTimer?.cancel();
     _playerFocusNode.dispose();
     _svc?.setPlayerScreenVisible(false);
+    // Leaving the player drops the immersive layout so returning to it
+    // (or controlling it from the phone) starts windowed again.
+    _svc?.setFullscreen(false);
     super.dispose();
   }
 
@@ -132,6 +141,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
         setState(() => _controlsVisible = false);
       }
     });
+  }
+
+  /// Applies the immersive fullscreen layout. All entry points (on-screen
+  /// button, F key, Escape, and the phone remote via the service) funnel
+  /// through here so the controls/auto-hide behavior is identical.
+  void _setFullscreen(bool v) {
+    if (_fullscreen == v) return;
+    setState(() {
+      _fullscreen = v;
+      _controlsVisible = true;
+    });
+    if (v) {
+      _showControlsTemporarily();
+    } else {
+      _hideTimer?.cancel();
+    }
   }
 
   Future<void> _saveVideo(VideoEntity updated) async {
@@ -203,21 +228,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// player actually does it".
   PlayerShortcutCallbacks _playerShortcutCallbacks(VideoEntity video) {
     return PlayerShortcutCallbacks(
-      toggleFullscreen: () {
-        setState(() {
-          _fullscreen = !_fullscreen;
-          if (_fullscreen) {
-            _controlsVisible = true;
-            _showControlsTemporarily();
-          } else {
-            _controlsVisible = true;
-            _hideTimer?.cancel();
-          }
-        });
-      },
+      toggleFullscreen: () => _svc?.toggleFullscreen(),
       exitOrBack: () {
         if (_fullscreen) {
-          setState(() => _fullscreen = false);
+          _svc?.setFullscreen(false);
         } else {
           Navigator.of(context).maybePop();
         }
@@ -375,7 +389,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             icon: Icon(_fullscreen
                                 ? Icons.fullscreen_exit_rounded
                                 : Icons.fullscreen_rounded),
-                            onPressed: () => setState(() => _fullscreen = !_fullscreen),
+                            onPressed: () => _svc?.toggleFullscreen(),
                             tooltip:
                                 _fullscreen ? 'Exit fullscreen' : 'Enter fullscreen',
                             semanticsLabel:

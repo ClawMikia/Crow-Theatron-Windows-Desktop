@@ -157,6 +157,13 @@ class PlaybackService extends ChangeNotifier {
   /// True while the full PlayerScreen is on top — hides the mini-player.
   bool isPlayerScreenVisible = false;
 
+  /// True while the full PlayerScreen is in its immersive fullscreen
+  /// layout (window title bar and side panel hidden). Owned here rather
+  /// than in PlayerScreen's State so the Crow-Chap phone remote can
+  /// toggle the same state the F key / on-screen button use.
+  bool _fullscreen = false;
+  bool get fullscreen => _fullscreen;
+
   /// Volume before muting, used for mute toggle.
   double _volumeBeforeMute = 100.0;
 
@@ -451,6 +458,17 @@ class PlaybackService extends ChangeNotifier {
     isPlayerScreenVisible = visible;
     notifyListeners();
   }
+
+  /// Sets the immersive fullscreen layout. Called by PlayerScreen itself
+  /// (button / keyboard) and by the phone remote's `fullscreen` command —
+  /// both paths go through here so they never disagree.
+  void setFullscreen(bool visible) {
+    if (_fullscreen == visible) return;
+    _fullscreen = visible;
+    notifyListeners();
+  }
+
+  void toggleFullscreen() => setFullscreen(!_fullscreen);
 
   @override
   void dispose() {

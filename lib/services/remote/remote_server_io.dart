@@ -372,6 +372,7 @@ class RemoteServer extends ChangeNotifier {
       'dur': durMs,
       'vol': vol.round(),
       'muted': _svc.isMuted,
+      'fullscreen': _svc.fullscreen,
       'speed': v?.playbackSpeed ?? 1.0,
       'pitch': v?.pitchSemitones ?? 0.0,
       'eq': (v?.eqPreset ?? EqPreset.flat).storageKey,
@@ -507,6 +508,11 @@ class RemoteServer extends ChangeNotifier {
         break;
       case 'mute':
         await _svc.toggleMute();
+        break;
+
+      // View
+      case 'fullscreen':
+        _svc.toggleFullscreen();
         break;
 
       // Tools (per-video, persisted)
