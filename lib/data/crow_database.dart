@@ -18,7 +18,7 @@ class CrowDatabase {
   static final CrowDatabase instance = CrowDatabase._();
 
   static const dbName = 'crow_theatron.db';
-  static const dbVersion = 9;
+  static const dbVersion = 10;
 
   ffi.Database? _db;
 
@@ -61,6 +61,12 @@ class CrowDatabase {
             } catch (_) {/* column already there */}
             await db.execute(_createThumbnails);
           }
+          if (oldVersion < 10) {
+            // v10: add internal_uri column for persistent video storage.
+            try {
+              await db.execute('ALTER TABLE videos ADD COLUMN internal_uri TEXT');
+            } catch (_) {/* column already there */}
+          }
         },
       ),
     );
@@ -71,6 +77,7 @@ class CrowDatabase {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       uri TEXT NOT NULL UNIQUE,
       source_uri TEXT,
+      internal_uri TEXT,
       title TEXT NOT NULL,
       folder_group TEXT NOT NULL,
       duration_ms INTEGER NOT NULL DEFAULT 0,
@@ -182,6 +189,7 @@ class CrowDatabase {
           // must not undo that.
           if (e.durationMs > 0) 'duration_ms': e.durationMs,
           'size_bytes': e.sizeBytes,
+          if (e.internalUriString != null) 'internal_uri': e.internalUriString,
         },
         where: 'id = ?',
         whereArgs: [existingId],
@@ -203,7 +211,7 @@ class CrowDatabase {
 
   Future<void> updatePreferences(VideoEntity e) async {
     final db = await database;
-    final m = e.toMap()..remove('id')..remove('uri')..remove('source_uri')..remove('folder_group')..remove('size_bytes')..remove('last_played_at')..remove('position_ms');
+    final m = e.toMap()..remove('id')..remove('uri')..remove('source_uri')..remove('internal_uri')..remove('folder_group')..remove('size_bytes')..remove('last_played_at')..remove('position_ms');
     await db.update('videos', m, where: 'id = ?', whereArgs: [e.id]);
   }
 

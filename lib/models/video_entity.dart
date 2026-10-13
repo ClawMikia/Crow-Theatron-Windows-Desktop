@@ -9,6 +9,7 @@ class VideoEntity {
   final int id;
   final String uriString;
   final String? sourceUriString;
+  final String? internalUriString;
   final String title;
   final String folderGroup;
   final int durationMs;
@@ -51,6 +52,7 @@ class VideoEntity {
     this.id = 0,
     required this.uriString,
     this.sourceUriString,
+    this.internalUriString,
     required this.title,
     required this.folderGroup,
     this.durationMs = 0,
@@ -89,6 +91,7 @@ class VideoEntity {
     int? id,
     String? uriString,
     String? sourceUriString,
+    String? internalUriString,
     String? title,
     String? folderGroup,
     int? durationMs,
@@ -126,6 +129,7 @@ class VideoEntity {
       id: id ?? this.id,
       uriString: uriString ?? this.uriString,
       sourceUriString: sourceUriString ?? this.sourceUriString,
+      internalUriString: internalUriString ?? this.internalUriString,
       title: title ?? this.title,
       folderGroup: folderGroup ?? this.folderGroup,
       durationMs: durationMs ?? this.durationMs,
@@ -165,6 +169,7 @@ class VideoEntity {
         'id': id == 0 ? null : id,
         'uri': uriString,
         'source_uri': sourceUriString,
+        'internal_uri': internalUriString,
         'title': title,
         'folder_group': folderGroup,
         'duration_ms': durationMs,
@@ -203,6 +208,7 @@ class VideoEntity {
         id: m['id'] as int? ?? 0,
         uriString: m['uri'] as String,
         sourceUriString: m['source_uri'] as String?,
+        internalUriString: m['internal_uri'] as String?,
         title: m['title'] as String,
         folderGroup: m['folder_group'] as String,
         durationMs: m['duration_ms'] as int? ?? 0,
